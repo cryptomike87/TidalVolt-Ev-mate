@@ -102,24 +102,35 @@ private fun Panel(card: Color, content: @Composable ColumnScope.() -> Unit) {
 
 @Composable
 private fun VehicleScreen(card: Color, fg: Color, accent: Color) {
+    val telemetry by TelemetryStore.latest
     Panel(card) {
         Text("2026 BYD Yuan Pro", color = fg, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
-        Text("Vehicle overview", color = fg.copy(alpha=.65f))
+        Text("Live vehicle overview", color = fg.copy(alpha=.65f))
         Spacer(Modifier.height(20.dp))
-        Text("—", color = accent, fontSize = 54.sp, fontWeight = FontWeight.Bold)
-        Text("Battery level • Awaiting live vehicle data", color = fg.copy(alpha=.65f))
+        Text(telemetry?.soc?.let { "%.0f%%".format(it) } ?: "—", color = accent, fontSize = 54.sp, fontWeight = FontWeight.Bold)
+        Text(if (telemetry != null) "Battery level • Live MQTT telemetry" else "Battery level • Waiting for live vehicle data", color = fg.copy(alpha=.65f))
         Spacer(Modifier.height(12.dp))
-        LinearProgressIndicator(progress = { 0f }, modifier = Modifier.fillMaxWidth(), color = accent)
+        LinearProgressIndicator(progress = { ((telemetry?.soc ?: 0.0) / 100.0).toFloat().coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth(), color = accent)
         Spacer(Modifier.height(18.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Metric("Estimated range", "Unavailable", fg)
-            Metric("Efficiency", "Unavailable", fg)
+            Metric("Estimated range", telemetry?.rangeMiles?.let { "%.0f mi".format(it) } ?: "Unavailable", fg)
+            Metric("Speed", telemetry?.speedMph?.let { "%.0f mph".format(it) } ?: "Unavailable", fg)
+        }
+        Spacer(Modifier.height(12.dp))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Metric("Motor power", telemetry?.motorPowerKw?.let { "%.1f kW".format(it) } ?: "Unavailable", fg)
+            Metric("Charging", if (telemetry?.isCharging == true) "Active" else if (telemetry?.isCharging == false) "Inactive" else "Unknown", fg)
+        }
+        telemetry?.batteryTempC?.let {
+            Spacer(Modifier.height(8.dp))
+            Metric("Battery temperature", "%.1f °C".format(it), fg)
         }
     }
     Spacer(Modifier.height(14.dp))
     Panel(card) {
         Text("Vehicle connection", color = fg, fontWeight = FontWeight.SemiBold)
-        Text("Not connected. Live battery, range and efficiency will appear here when a supported BMS connection is available. No sample readings are displayed.", color = fg.copy(alpha=.7f))
+        Text(if (telemetry != null) "Receiving live data from BYD Trip Stats over MQTT. Confirm the readings against the vehicle display during initial testing." else "Not receiving telemetry yet. Install and configure BYD Trip Stats on a compatible BYD head unit, enable its MQTT publisher, and use the same broker and topic in More → Integrations.", color = fg.copy(alpha=.7f))
+        Text("Connection: ${MqttTelemetryManager.status.value}", color = accent, fontSize = 12.sp)
     }
 }
 
@@ -197,7 +208,7 @@ private fun MapScreen(card: Color, fg: Color, accent: Color, fullscreen: Boolean
                     Row(Modifier.padding(horizontal=12.dp, vertical=7.dp), verticalAlignment=Alignment.CenterVertically) {
                         Text(when(activeLayer) {
                             "Chargers" -> "Charging stations listed in OpenStreetMap. Verify availability before travelling."
-                            "Range" -> "Range ring is illustrative until ABRP battery data is connected."
+                            "Range" -> "Range overlay will use live TidalVolt vehicle telemetry when available."
                             "Weather" -> "Live weather overlay is not connected yet."
                             else -> "Trip routing and arrival charge require ABRP integration."
                         }, color=fg.copy(alpha=.8f), fontSize=11.sp, modifier=Modifier.weight(1f))
@@ -393,7 +404,7 @@ private fun StatsScreen(card: Color, fg: Color, accent: Color) {
 }
 @Composable
 private fun MoreScreen(card: Color, fg: Color, accent: Color, dark: Boolean, setDark: (Boolean)->Unit) {
-    AbrpSettingsPanel(card, fg, accent)
+    MqttSettingsPanel(card, fg, accent)
     Spacer(Modifier.height(12.dp))
     Panel(card) {
         Text("Appearance", color = fg, fontWeight = FontWeight.SemiBold, fontSize = 19.sp)
@@ -412,26 +423,45 @@ private fun MoreScreen(card: Color, fg: Color, accent: Color, dark: Boolean, set
 }
 
 @Composable
-private fun AbrpSettingsPanel(card: Color, fg: Color, accent: Color) {
+private fun MqttSettingsPanel(card: Color, fg: Color, accent: Color) {
     val context = androidx.compose.ui.platform.LocalContext.current
-    val prefs = remember { context.getSharedPreferences("tidalvolt_abrp", Context.MODE_PRIVATE) }
-    var apiKey by remember { mutableStateOf(prefs.getString("api_key", "") ?: "") }
-    var userToken by remember { mutableStateOf(prefs.getString("user_token", "") ?: "") }
-    var showToken by remember { mutableStateOf(false) }
+    val prefs = remember { context.getSharedPreferences("tidalvolt_mqtt", Context.MODE_PRIVATE) }
+    var host by remember { mutableStateOf(prefs.getString("host", "") ?: "") }
+    var port by remember { mutableStateOf(prefs.getString("port", "8883") ?: "8883") }
+    var topic by remember { mutableStateOf(prefs.getString("topic", "byd-trip-stats/yuanpro/state") ?: "byd-trip-stats/yuanpro/state") }
+    var username by remember { mutableStateOf(prefs.getString("username", "") ?: "") }
+    var password by remember { mutableStateOf(prefs.getString("password", "") ?: "") }
+    var showPassword by remember { mutableStateOf(false) }
+    val connectionStatus by MqttTelemetryManager.status
+
     Panel(card) {
         Text("Integrations", color = fg, fontSize = 20.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(6.dp))
-        Text("A Better Routeplanner (ABRP)", color = accent, fontWeight = FontWeight.SemiBold)
-        Text("Configure ABRP access to retrieve your latest reported battery percentage. TidalVolt does not connect directly to the car.", color = fg.copy(alpha=.7f))
+        Text("BYD Trip Stats • MQTT telemetry", color = accent, fontWeight = FontWeight.SemiBold)
+        Text("Receive live vehicle data from BYD Trip Stats without ABRP. TidalVolt subscribes to the telemetry topic; BYD Trip Stats remains the vehicle-side data reader.", color = fg.copy(alpha=.7f))
         Spacer(Modifier.height(10.dp))
-        OutlinedTextField(value = apiKey, onValueChange = { apiKey = it }, label = { Text("ABRP API key") }, singleLine = true, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(value = userToken, onValueChange = { userToken = it }, label = { Text("ABRP user access token") }, singleLine = true, visualTransformation = if (showToken) androidx.compose.ui.text.input.VisualTransformation.None else PasswordVisualTransformation(), trailingIcon = { TextButton(onClick = { showToken = !showToken }) { Text(if (showToken) "Hide" else "Show") } }, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(value = host, onValueChange = { host = it }, label = { Text("MQTT broker hostname") }, placeholder = { Text("Your HiveMQ Cloud hostname") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(value = port, onValueChange = { port = it.filter(Char::isDigit).take(5) }, label = { Text("Broker port") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(value = topic, onValueChange = { topic = it }, label = { Text("Telemetry topic") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(value = username, onValueChange = { username = it }, label = { Text("Broker username") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(value = password, onValueChange = { password = it }, label = { Text("Broker password") }, singleLine = true, visualTransformation = if (showPassword) androidx.compose.ui.text.input.VisualTransformation.None else PasswordVisualTransformation(), trailingIcon = { TextButton(onClick = { showPassword = !showPassword }) { Text(if (showPassword) "Hide" else "Show") } }, modifier = Modifier.fillMaxWidth())
         Spacer(Modifier.height(8.dp))
-        Button(onClick = { prefs.edit().putString("api_key", apiKey.trim()).putString("user_token", userToken.trim()).apply() }, enabled = apiKey.isNotBlank() && userToken.isNotBlank(), modifier = Modifier.fillMaxWidth()) { Text("Save ABRP credentials") }
-        Text(if (apiKey.isNotBlank() && userToken.isNotBlank()) "Credentials saved on this device. Telemetry retrieval is not active yet." else "Not configured", color = fg.copy(alpha=.75f), fontSize = 12.sp)
-        Text("ABRP must approve TidalVolt's OAuth application with the get_telemetry scope before live battery readings can be enabled. Do not share these credentials in chat.", color = fg.copy(alpha=.55f), fontSize = 11.sp)
+        Text("Use the same broker credentials in BYD Trip Stats → Settings → Connections → MQTT. Set its device friendly name to yuanpro so the default topic matches. Port 8883 uses TLS; port 1883 uses an unencrypted connection.", color = fg.copy(alpha=.6f), fontSize = 11.sp)
+        Spacer(Modifier.height(8.dp))
+        Button(
+            onClick = {
+                prefs.edit().putString("host", host.trim()).putString("port", port.trim()).putString("topic", topic.trim()).putString("username", username.trim()).putString("password", password).apply()
+                MqttTelemetryManager.connect(host.trim(), port.toIntOrNull() ?: 8883, topic.trim(), username.trim(), password)
+            },
+            enabled = host.isNotBlank() && topic.isNotBlank() && (port.toIntOrNull() ?: 0) in 1..65535,
+            modifier = Modifier.fillMaxWidth()
+        ) { Text("Save and connect") }
+        OutlinedButton(onClick = { MqttTelemetryManager.disconnect() }, modifier = Modifier.fillMaxWidth()) { Text("Disconnect") }
+        Text("Status: $connectionStatus", color = if (connectionStatus == "Connected") accent else fg.copy(alpha=.7f), fontWeight = FontWeight.SemiBold)
+        Text("Live telemetry is not shown until a valid message arrives. Credentials are stored locally on this device. Do not reuse a password you use elsewhere.", color = fg.copy(alpha=.55f), fontSize = 11.sp)
     }
 }
+
 private val tidalVoltMapPage = """
 <!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
@@ -449,7 +479,7 @@ window.setLayer=function(layer){
 if(layer==="chargers"){if(map.hasLayer(chargerLayer))map.removeLayer(chargerLayer);else map.addLayer(chargerLayer);}
 if(layer==="range"){if(map.hasLayer(rangeLayer))map.removeLayer(rangeLayer);else{L.circle([25.055,-77.35],{radius:12000,color:"#16877e",fillColor:"#39b9aa",fillOpacity:.12}).addTo(rangeLayer);map.addLayer(rangeLayer);}}
 if(layer==="weather")alert("Live weather overlay is not connected yet.");
-if(layer==="trip")alert("Trip routing will be enabled with ABRP authorization.");
+if(layer==="trip")alert("TidalVolt route planning is not connected yet.");
 };
 </script></body></html>
 """
