@@ -1,6 +1,10 @@
 package com.tidalvolt.app
 
 import android.os.Bundle
+import android.content.Context
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
@@ -84,22 +88,22 @@ private fun Panel(card: Color, content: @Composable ColumnScope.() -> Unit) {
 private fun VehicleScreen(card: Color, fg: Color, accent: Color) {
     Panel(card) {
         Text("2026 BYD Yuan Pro", color = fg, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
-        Text("Vehicle overview • Sample configuration", color = fg.copy(alpha=.65f))
+        Text("Vehicle overview", color = fg.copy(alpha=.65f))
         Spacer(Modifier.height(20.dp))
-        Text("72%", color = accent, fontSize = 54.sp, fontWeight = FontWeight.Bold)
-        Text("Battery level • DEMO VALUE", color = fg.copy(alpha=.65f))
+        Text("—", color = accent, fontSize = 54.sp, fontWeight = FontWeight.Bold)
+        Text("Battery level • Awaiting live vehicle data", color = fg.copy(alpha=.65f))
         Spacer(Modifier.height(12.dp))
-        LinearProgressIndicator(progress = { .72f }, modifier = Modifier.fillMaxWidth(), color = accent)
+        LinearProgressIndicator(progress = { 0f }, modifier = Modifier.fillMaxWidth(), color = accent)
         Spacer(Modifier.height(18.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Metric("Estimated range", "176 mi", fg)
-            Metric("Efficiency", "20 kWh/100 mi", fg)
+            Metric("Estimated range", "Unavailable", fg)
+            Metric("Efficiency", "Unavailable", fg)
         }
     }
     Spacer(Modifier.height(14.dp))
     Panel(card) {
         Text("Vehicle connection", color = fg, fontWeight = FontWeight.SemiBold)
-        Text("Not connected. Dashboard figures are examples only; live BMS telemetry is not yet integrated.", color = fg.copy(alpha=.7f))
+        Text("Not connected. Live battery, range and efficiency will appear here when a supported BMS connection is available. No sample readings are displayed.", color = fg.copy(alpha=.7f))
     }
 }
 
@@ -128,25 +132,110 @@ private fun MapScreen(card: Color, fg: Color, accent: Color) {
     }
 }
 
+private data class ChargeRecord(
+    val timestamp: Long,
+    val from: Double,
+    val to: Double,
+    val kwh: Double,
+    val cost: Double
+)
+
 @Composable
 private fun ChargeScreen(card: Color, fg: Color, accent: Color) {
-    var current by remember { mutableStateOf("30") }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val prefs = remember { context.getSharedPreferences("tidalvolt_charge_history", Context.MODE_PRIVATE) }
+    var current by remember { mutableStateOf("") }
     var target by remember { mutableStateOf("90") }
     var rate by remember { mutableStateOf("0.55") }
-    val from = current.toDoubleOrNull()?.coerceIn(0.0,100.0) ?: 0.0
-    val to = target.toDoubleOrNull()?.coerceIn(from,100.0) ?: from
-    val tariff = rate.toDoubleOrNull()?.coerceAtLeast(0.0) ?: 0.0
-    val gridKwh = 45.1 * (to-from) / 100.0 / .95
+    var sessionStart by remember { mutableStateOf(prefs.getLong("active_start_time", 0L)) }
+    var sessionFrom by remember { mutableStateOf(prefs.getFloat("active_start_soc", -1f).toDouble()) }
+    val history = remember {
+        mutableStateListOf<ChargeRecord>().apply {
+            prefs.getString("history", "").orEmpty().lines().filter { it.isNotBlank() }.forEach { line ->
+                val p = line.split("|")
+                if (p.size == 5) runCatching {
+                    add(ChargeRecord(p[0].toLong(), p[1].toDouble(), p[2].toDouble(), p[3].toDouble(), p[4].toDouble()))
+                }
+            }
+        }
+    }
+    val from = current.toDoubleOrNull()?.coerceIn(0.0,100.0)
+    val to = target.toDoubleOrNull()?.coerceIn(0.0,100.0)
+    val tariff = rate.toDoubleOrNull()?.coerceAtLeast(0.0)
+    val gridKwh = if (from != null && to != null && to >= from) 45.1 * (to-from) / 100.0 / .95 else null
+    val estimate = if (gridKwh != null && tariff != null) gridKwh * tariff else null
     Panel(card) {
         Text("Charging estimator", color = fg, fontWeight = FontWeight.SemiBold, fontSize = 19.sp)
+        Text("Update your current battery level to recalculate the estimate.", color = fg.copy(alpha=.65f), fontSize = 12.sp)
         Spacer(Modifier.height(12.dp))
         NumberField("Current battery %", current, { current=it }, fg)
         NumberField("Target battery %", target, { target=it }, fg)
         NumberField("Electricity price (BSD/kWh)", rate, { rate=it }, fg)
         Spacer(Modifier.height(14.dp))
-        Text("Estimated grid energy: %.2f kWh".format(gridKwh), color = fg)
-        Text("Estimated cost: BSD $%.2f".format(gridKwh*tariff), color = accent, fontSize = 27.sp, fontWeight = FontWeight.Bold)
-        Text("Based on 45.1 kWh battery and 95% charging efficiency.", color = fg.copy(alpha=.6f), fontSize = 11.sp)
+        if (gridKwh != null && estimate != null) {
+            Text("Estimated grid energy: %.2f kWh".format(gridKwh), color = fg)
+            Text("Estimated cost: BSD $%.2f".format(estimate), color = accent, fontSize = 27.sp, fontWeight = FontWeight.Bold)
+        } else {
+            Text("Enter a valid current battery level and a target at or above it to see your estimate.", color = fg.copy(alpha=.7f))
+        }
+        Text("Calculation uses the 45.1 kWh battery capacity and an estimated 95% charging efficiency. Adjust the electricity rate if needed.", color = fg.copy(alpha=.6f), fontSize = 11.sp)
+    }
+    Spacer(Modifier.height(14.dp))
+    Panel(card) {
+        Text("Charging session", color = fg, fontWeight = FontWeight.SemiBold, fontSize = 19.sp)
+        if (sessionStart == 0L) {
+            Text("Start a session when you plug in. TidalVolt will save the session when you finish it.", color = fg.copy(alpha=.7f))
+            Button(
+                onClick = {
+                    val soc = current.toDoubleOrNull()?.coerceIn(0.0,100.0)
+                    if (soc != null) {
+                        sessionFrom = soc
+                        sessionStart = System.currentTimeMillis()
+                        prefs.edit().putLong("active_start_time", sessionStart).putFloat("active_start_soc", soc.toFloat()).apply()
+                    }
+                },
+                enabled = from != null,
+                modifier = Modifier.fillMaxWidth()
+            ) { Text("Start charging session") }
+        } else {
+            Text("Session in progress • Started at %.0f%%".format(sessionFrom), color = accent, fontWeight = FontWeight.SemiBold)
+            Text("Enter the latest battery level above, then finish the session to save it.", color = fg.copy(alpha=.7f))
+            Button(
+                onClick = {
+                    val endSoc = current.toDoubleOrNull()?.coerceIn(sessionFrom,100.0)
+                    if (endSoc != null) {
+                        val energy = 45.1 * (endSoc-sessionFrom) / 100.0 / .95
+                        val cost = energy * (rate.toDoubleOrNull()?.coerceAtLeast(0.0) ?: 0.0)
+                        val record = ChargeRecord(sessionStart, sessionFrom, endSoc, energy, cost)
+                        history.add(0, record)
+                        val serialized = history.take(50).joinToString("\n") { "${it.timestamp}|${it.from}|${it.to}|${it.kwh}|${it.cost}" }
+                        prefs.edit().putString("history", serialized).remove("active_start_time").remove("active_start_soc").apply()
+                        sessionStart = 0L
+                        sessionFrom = -1.0
+                    }
+                },
+                enabled = from != null && from >= sessionFrom,
+                modifier = Modifier.fillMaxWidth()
+            ) { Text("Finish and save session") }
+        }
+    }
+    Spacer(Modifier.height(14.dp))
+    Panel(card) {
+        Text("Charge history", color = fg, fontWeight = FontWeight.SemiBold, fontSize = 19.sp)
+        if (history.isEmpty()) {
+            Text("No saved charging sessions yet. Completed sessions will appear here.", color = fg.copy(alpha=.7f))
+        } else {
+            history.take(20).forEach { item ->
+                val date = SimpleDateFormat("MMM d, yyyy • h:mm a", Locale.getDefault()).format(Date(item.timestamp))
+                Column(Modifier.fillMaxWidth().padding(vertical=8.dp)) {
+                    Text(date, color = fg.copy(alpha=.65f), fontSize = 12.sp)
+                    Text("%.0f%% → %.0f%%  •  %.2f kWh".format(item.from, item.to, item.kwh), color = fg, fontWeight = FontWeight.SemiBold)
+                    Text("Estimated cost: BSD $%.2f".format(item.cost), color = accent)
+                }
+                HorizontalDivider()
+            }
+            Text("History is stored on this phone. Sessions are currently started and finished in the app; automatic detection requires live vehicle or charger integration.", color = fg.copy(alpha=.6f), fontSize = 11.sp)
+        }
     }
 }
 
