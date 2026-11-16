@@ -123,12 +123,8 @@ object MqttTelemetryManager {
             }
             client.connect(options, null, object : IMqttActionListener {
                 override fun onSuccess(asyncActionToken: IMqttToken?) {
+                    // connectComplete performs the subscription for both initial and automatic reconnects.
                     setStatus("Connected")
-                    try {
-                        client.subscribe(topic, 0)
-                    } catch (_: Exception) {
-                        setStatus("Connected, but topic subscription failed")
-                    }
                 }
                 override fun onFailure(asyncActionToken: IMqttToken?, exception: Throwable?) {
                     setStatus("Connection failed: ${exception?.message ?: "check broker settings"}")
