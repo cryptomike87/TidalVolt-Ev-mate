@@ -14,6 +14,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.viewinterop.AndroidView
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -46,6 +49,7 @@ class MainActivity : ComponentActivity() {
 fun TidalVoltApp() {
     var dark by remember { mutableStateOf(false) }
     var tab by remember { mutableStateOf("Vehicle") }
+    var mapFullscreen by remember { mutableStateOf(false) }
     val bg = if (dark) Obsidian else Pearl
     val card = if (dark) DarkCard else PearlCard
     val fg = if (dark) Color(0xFFE7E0D4) else Ink
@@ -53,7 +57,7 @@ fun TidalVoltApp() {
 
     MaterialTheme(colorScheme = if (dark) darkColorScheme(primary = accent, background = bg, surface = card, onSurface = fg) else lightColorScheme(primary = accent, background = bg, surface = card, onSurface = fg)) {
         Scaffold(containerColor = bg, bottomBar = {
-            NavigationBar(containerColor = card) {
+            if (!(tab == "Map" && mapFullscreen)) NavigationBar(containerColor = card) {
                 listOf("Vehicle", "Map", "Charge", "Savings", "More").forEach { item ->
                     NavigationBarItem(selected = tab == item, onClick = { tab = item },
                         icon = { Icon(when(item) { "Vehicle" -> Icons.Default.DirectionsCar; "Map" -> Icons.Default.Map; "Charge" -> Icons.Default.Bolt; "Savings" -> Icons.Default.Savings; else -> Icons.Default.Settings }, contentDescription = item) },
@@ -61,17 +65,20 @@ fun TidalVoltApp() {
                 }
             }
         }) { padding ->
-            Column(Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(20.dp)) {
-                Text("TIDALVOLT", color = accent, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
-                Spacer(Modifier.height(8.dp))
-                Text(tab, color = fg, fontSize = 28.sp, fontWeight = FontWeight.Bold)
-                Spacer(Modifier.height(18.dp))
-                when(tab) {
-                    "Vehicle" -> VehicleScreen(card, fg, accent)
-                    "Map" -> MapScreen(card, fg, accent)
-                    "Charge" -> ChargeScreen(card, fg, accent)
-                    "Savings" -> SavingsScreen(card, fg, accent)
-                    else -> MoreScreen(card, fg, accent, dark) { dark = it }
+            if (tab == "Map") {
+                MapScreen(card, fg, accent, mapFullscreen, { mapFullscreen = it }, Modifier.fillMaxSize().padding(if (mapFullscreen) PaddingValues(0.dp) else padding))
+            } else {
+                Column(Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(20.dp)) {
+                    Text("TIDALVOLT", color = accent, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
+                    Spacer(Modifier.height(8.dp))
+                    Text(tab, color = fg, fontSize = 28.sp, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(18.dp))
+                    when(tab) {
+                        "Vehicle" -> VehicleScreen(card, fg, accent)
+                        "Charge" -> ChargeScreen(card, fg, accent)
+                        "Savings" -> SavingsScreen(card, fg, accent)
+                        else -> MoreScreen(card, fg, accent, dark) { dark = it }
+                    }
                 }
             }
         }
@@ -114,25 +121,33 @@ private fun Metric(label: String, value: String, fg: Color) {
 }
 
 @Composable
-private fun MapScreen(card: Color, fg: Color, accent: Color) {
-    Panel(card) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Default.LocationOn, contentDescription = null, tint = accent)
-            Text("Nassau, The Bahamas", color = fg, fontWeight = FontWeight.SemiBold)
+private fun MapScreen(card: Color, fg: Color, accent: Color, fullscreen: Boolean, onFullscreen: (Boolean)->Unit, modifier: Modifier = Modifier) {
+    var chargers by remember { mutableStateOf(true) }
+    var range by remember { mutableStateOf(true) }
+    var weather by remember { mutableStateOf(false) }
+    var trip by remember { mutableStateOf(false) }
+    Column(modifier.fillMaxSize().background(Color(0xFFE9EEE9))) {
+        Row(Modifier.fillMaxWidth().background(card).padding(horizontal=14.dp, vertical=4.dp), horizontalArrangement=Arrangement.SpaceBetween, verticalAlignment=Alignment.CenterVertically) {
+            Column { Text("TIDALVOLT MAP", color=accent, fontSize=10.sp, fontWeight=FontWeight.Bold); Text("Nassau, The Bahamas", color=fg, fontWeight=FontWeight.Bold) }
+            IconButton(onClick={onFullscreen(!fullscreen)}) { Icon(if(fullscreen) Icons.Default.FullscreenExit else Icons.Default.Fullscreen, contentDescription="Toggle fullscreen", tint=fg) }
         }
-        Spacer(Modifier.height(14.dp))
-        Box(Modifier.fillMaxWidth().height(210.dp).background(Color(0xFFE5E8E1), RoundedCornerShape(16.dp)), contentAlignment = Alignment.Center) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Icon(Icons.Default.Map, contentDescription = null, tint = Color(0xFF397D78), modifier = Modifier.size(42.dp))
-                Text("Map integration coming next", color = Color(0xFF26302F), fontWeight = FontWeight.SemiBold)
-                Text("Road-based range and charger data are not connected", color = Color(0xFF52605D), fontSize = 11.sp)
+        Box(Modifier.weight(1f).fillMaxWidth()) {
+            AndroidView(modifier=Modifier.fillMaxSize(), factory={ context -> WebView(context).apply { settings.javaScriptEnabled=true; settings.domStorageEnabled=true; webViewClient=WebViewClient(); loadUrl("https://www.openstreetmap.org/#map=12/25.055/-77.35") } })
+            Column(Modifier.align(Alignment.TopStart).padding(8.dp), verticalArrangement=Arrangement.spacedBy(4.dp)) {
+                FilterChip(selected=chargers,onClick={chargers=!chargers},label={Text("⚡ Chargers")})
+                FilterChip(selected=range,onClick={range=!range},label={Text("◉ Range")})
+                FilterChip(selected=weather,onClick={weather=!weather},label={Text("☀ Weather")})
+                FilterChip(selected=trip,onClick={trip=!trip},label={Text("➤ Trip")})
+            }
+            Card(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(8.dp), colors=CardDefaults.cardColors(containerColor=card.copy(alpha=.96f))) {
+                Column(Modifier.padding(10.dp)) {
+                    Text("EV map tools", color=fg, fontWeight=FontWeight.Bold)
+                    Text(when { trip -> "Trip planner: ABRP route and arrival-charge integration planned."; weather -> "Weather overlay: live forecast integration planned."; range -> "Range overlay: uses ABRP battery percentage and Yuan Pro efficiency when connected."; else -> "Explore Nassau. Charger locations and connector details will be verified as data sources are connected." }, color=fg.copy(alpha=.7f), fontSize=11.sp)
+                }
             }
         }
-        Spacer(Modifier.height(12.dp))
-        Text("Range preview will use your battery level, reserve and driving efficiency. No route reachability is claimed yet.", color = fg.copy(alpha=.7f))
     }
 }
-
 private data class ChargeRecord(
     val timestamp: Long,
     val from: Double,
