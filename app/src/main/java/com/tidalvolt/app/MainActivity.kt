@@ -59,9 +59,9 @@ fun TidalVoltApp() {
     MaterialTheme(colorScheme = if (dark) darkColorScheme(primary = accent, background = bg, surface = card, onSurface = fg) else lightColorScheme(primary = accent, background = bg, surface = card, onSurface = fg)) {
         Scaffold(containerColor = bg, bottomBar = {
             if (!(tab == "Map" && mapFullscreen)) NavigationBar(containerColor = card) {
-                listOf("Vehicle", "Map", "Charge", "Savings", "More").forEach { item ->
+                listOf("Vehicle", "Map", "Energy", "Stats", "More").forEach { item ->
                     NavigationBarItem(selected = tab == item, onClick = { tab = item },
-                        icon = { Icon(when(item) { "Vehicle" -> Icons.Default.DirectionsCar; "Map" -> Icons.Default.Map; "Charge" -> Icons.Default.Bolt; "Savings" -> Icons.Default.Savings; else -> Icons.Default.Settings }, contentDescription = item) },
+                        icon = { Icon(when(item) { "Vehicle" -> Icons.Default.DirectionsCar; "Map" -> Icons.Default.Map; "Energy" -> Icons.Default.Bolt; "Stats" -> Icons.Default.QueryStats; else -> Icons.Default.Settings }, contentDescription = item) },
                         label = { Text(item) })
                 }
             }
@@ -76,8 +76,8 @@ fun TidalVoltApp() {
                     Spacer(Modifier.height(18.dp))
                     when(tab) {
                         "Vehicle" -> VehicleScreen(card, fg, accent)
-                        "Charge" -> ChargeScreen(card, fg, accent)
-                        "Savings" -> SavingsScreen(card, fg, accent)
+                        "Energy" -> ChargeScreen(card, fg, accent)
+                        "Stats" -> StatsScreen(card, fg, accent)
                         else -> MoreScreen(card, fg, accent, dark) { dark = it }
                     }
                 }
@@ -311,6 +311,31 @@ private fun SavingsScreen(card: Color, fg: Color, accent: Color) {
     }
 }
 
+@Composable
+private fun StatsScreen(card: Color, fg: Color, accent: Color) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val prefs = remember { context.getSharedPreferences("tidalvolt_stats", Context.MODE_PRIVATE) }
+    val labels = listOf("Driving", "Parked", "At work", "At home", "At street lights")
+    Panel(card) {
+        Text("Vehicle activity", color=fg, fontSize=19.sp, fontWeight=FontWeight.SemiBold)
+        Text("Daily time summaries", color=fg.copy(alpha=.65f), fontSize=12.sp)
+        Spacer(Modifier.height(10.dp))
+        labels.forEach { label ->
+            val mins = prefs.getLong("minutes_" + label, 0L)
+            Row(Modifier.fillMaxWidth().padding(vertical=8.dp), horizontalArrangement=Arrangement.SpaceBetween) {
+                Text(label, color=fg)
+                Text("%dh %02dm".format(mins/60, mins%60), color=accent, fontWeight=FontWeight.Bold)
+            }
+            HorizontalDivider()
+        }
+        Text("These totals are not live yet. Automatic classification requires location permission, geofences for work/home, and activity recognition. Time stopped at traffic lights can only be estimated.", color=fg.copy(alpha=.65f), fontSize=11.sp)
+    }
+    Spacer(Modifier.height(12.dp))
+    Panel(card) {
+        Text("Tracking requirements", color=fg, fontWeight=FontWeight.SemiBold)
+        Text("Work and home time need saved locations. Driving and parked time need motion recognition. Red-light time needs a stop-detection model. TidalVolt will not invent activity totals.", color=fg.copy(alpha=.7f))
+    }
+}
 @Composable
 private fun MoreScreen(card: Color, fg: Color, accent: Color, dark: Boolean, setDark: (Boolean)->Unit) {
     AbrpSettingsPanel(card, fg, accent)
