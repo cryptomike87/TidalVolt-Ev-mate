@@ -17,6 +17,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.viewinterop.AndroidView
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.webkit.WebChromeClient
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -122,27 +123,56 @@ private fun Metric(label: String, value: String, fg: Color) {
 
 @Composable
 private fun MapScreen(card: Color, fg: Color, accent: Color, fullscreen: Boolean, onFullscreen: (Boolean)->Unit, modifier: Modifier = Modifier) {
-    var chargers by remember { mutableStateOf(true) }
-    var range by remember { mutableStateOf(true) }
-    var weather by remember { mutableStateOf(false) }
-    var trip by remember { mutableStateOf(false) }
+    var showLayers by remember { mutableStateOf(false) }
+    var showInfo by remember { mutableStateOf(false) }
+    var activeLayer by remember { mutableStateOf("Chargers") }
+    var webView by remember { mutableStateOf<WebView?>(null) }
     Column(modifier.fillMaxSize().background(Color(0xFFE9EEE9))) {
-        Row(Modifier.fillMaxWidth().background(card).padding(horizontal=14.dp, vertical=4.dp), horizontalArrangement=Arrangement.SpaceBetween, verticalAlignment=Alignment.CenterVertically) {
-            Column { Text("TIDALVOLT MAP", color=accent, fontSize=10.sp, fontWeight=FontWeight.Bold); Text("Nassau, The Bahamas", color=fg, fontWeight=FontWeight.Bold) }
-            IconButton(onClick={onFullscreen(!fullscreen)}) { Icon(if(fullscreen) Icons.Default.FullscreenExit else Icons.Default.Fullscreen, contentDescription="Toggle fullscreen", tint=fg) }
+        if (!fullscreen) {
+            Row(Modifier.fillMaxWidth().background(card).padding(horizontal=14.dp, vertical=4.dp), horizontalArrangement=Arrangement.SpaceBetween, verticalAlignment=Alignment.CenterVertically) {
+                Column { Text("TIDALVOLT MAP", color=accent, fontSize=10.sp, fontWeight=FontWeight.Bold); Text("Nassau, The Bahamas", color=fg, fontWeight=FontWeight.Bold) }
+                IconButton(onClick={onFullscreen(true)}) { Icon(Icons.Default.Fullscreen, contentDescription="Expand map", tint=fg) }
+            }
         }
         Box(Modifier.weight(1f).fillMaxWidth()) {
-            AndroidView(modifier=Modifier.fillMaxSize(), factory={ context -> WebView(context).apply { settings.javaScriptEnabled=true; settings.domStorageEnabled=true; webViewClient=WebViewClient(); loadUrl("https://www.openstreetmap.org/#map=12/25.055/-77.35") } })
-            Column(Modifier.align(Alignment.TopStart).padding(8.dp), verticalArrangement=Arrangement.spacedBy(4.dp)) {
-                FilterChip(selected=chargers,onClick={chargers=!chargers},label={Text("⚡ Chargers")})
-                FilterChip(selected=range,onClick={range=!range},label={Text("◉ Range")})
-                FilterChip(selected=weather,onClick={weather=!weather},label={Text("☀ Weather")})
-                FilterChip(selected=trip,onClick={trip=!trip},label={Text("➤ Trip")})
+            AndroidView(modifier=Modifier.fillMaxSize(), factory={ context ->
+                WebView(context).apply {
+                    settings.javaScriptEnabled=true
+                    settings.domStorageEnabled=true
+                    settings.loadsImagesAutomatically=true
+                    webChromeClient=WebChromeClient()
+                    webViewClient=WebViewClient()
+                    setBackgroundColor(android.graphics.Color.rgb(232,238,232))
+                    loadDataWithBaseURL("https://unpkg.com/", tidalVoltMapPage, "text/html", "UTF-8", null)
+                    webView=this
+                }
+            }, update={ webView=it })
+            Row(Modifier.align(Alignment.TopEnd).padding(10.dp), horizontalArrangement=Arrangement.spacedBy(6.dp)) {
+                FilledTonalButton(onClick={showLayers=!showLayers}, contentPadding=PaddingValues(horizontal=12.dp, vertical=8.dp)) { Icon(Icons.Default.Layers, contentDescription=null); Spacer(Modifier.width(4.dp)); Text("Layers") }
+                FilledTonalButton(onClick={onFullscreen(!fullscreen)}, contentPadding=PaddingValues(horizontal=12.dp, vertical=8.dp)) { Icon(if(fullscreen) Icons.Default.FullscreenExit else Icons.Default.Fullscreen, contentDescription=null) }
             }
-            Card(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(8.dp), colors=CardDefaults.cardColors(containerColor=card.copy(alpha=.96f))) {
-                Column(Modifier.padding(10.dp)) {
-                    Text("EV map tools", color=fg, fontWeight=FontWeight.Bold)
-                    Text(when { trip -> "Trip planner: ABRP route and arrival-charge integration planned."; weather -> "Weather overlay: live forecast integration planned."; range -> "Range overlay: uses ABRP battery percentage and Yuan Pro efficiency when connected."; else -> "Explore Nassau. Charger locations and connector details will be verified as data sources are connected." }, color=fg.copy(alpha=.7f), fontSize=11.sp)
+            if(showLayers) {
+                Card(Modifier.align(Alignment.TopEnd).padding(top=58.dp,end=10.dp).widthIn(max=210.dp), colors=CardDefaults.cardColors(containerColor=card)) {
+                    Column(Modifier.padding(10.dp), verticalArrangement=Arrangement.spacedBy(4.dp)) {
+                        listOf("Chargers","Range","Weather","Trip").forEach { layer ->
+                            TextButton(onClick={activeLayer=layer; showLayers=false; webView?.evaluateJavascript("setLayer('${layer.lowercase()}')",null); showInfo=true}, modifier=Modifier.fillMaxWidth()) {
+                                Text((if(activeLayer==layer) "✓  " else "")+layer, color=fg)
+                            }
+                        }
+                    }
+                }
+            }
+            if(showInfo) {
+                Card(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(8.dp), colors=CardDefaults.cardColors(containerColor=card.copy(alpha=.96f))) {
+                    Row(Modifier.padding(horizontal=12.dp, vertical=7.dp), verticalAlignment=Alignment.CenterVertically) {
+                        Text(when(activeLayer) {
+                            "Chargers" -> "Charging stations listed in OpenStreetMap. Verify availability before travelling."
+                            "Range" -> "Range ring is illustrative until ABRP battery data is connected."
+                            "Weather" -> "Live weather overlay is not connected yet."
+                            else -> "Trip routing and arrival charge require ABRP integration."
+                        }, color=fg.copy(alpha=.8f), fontSize=11.sp, modifier=Modifier.weight(1f))
+                        IconButton(onClick={showInfo=false}) { Icon(Icons.Default.Close, contentDescription="Close", tint=fg) }
+                    }
                 }
             }
         }
@@ -322,3 +352,23 @@ private fun AbrpSettingsPanel(card: Color, fg: Color, accent: Color) {
         Text("ABRP must approve TidalVolt's OAuth application with the get_telemetry scope before live battery readings can be enabled. Do not share these credentials in chat.", color = fg.copy(alpha=.55f), fontSize = 11.sp)
     }
 }
+private val tidalVoltMapPage = """
+<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<style>html,body,#map{height:100%;width:100%;margin:0;padding:0;background:#e8eee8}.leaflet-control-attribution{font-size:9px}</style></head><body><div id="map"></div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script><script>
+const map=L.map("map",{zoomControl:false}).setView([25.055,-77.35],12);
+L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:"© OpenStreetMap contributors"}).addTo(map);
+L.control.zoom({position:"bottomright"}).addTo(map);
+const chargerLayer=L.layerGroup().addTo(map), rangeLayer=L.layerGroup();
+function addCharger(lat,lon,name,info){L.marker([lat,lon]).addTo(chargerLayer).bindPopup("<b>"+name+"</b><br>"+info);}
+fetch("https://overpass-api.de/api/interpreter?data="+encodeURIComponent('[out:json][timeout:20];(node["amenity"="charging_station"](24.95,-77.58,25.13,-77.18);way["amenity"="charging_station"](24.95,-77.58,25.13,-77.18););out center;'))
+.then(r=>r.json()).then(d=>d.elements.forEach(e=>{let lat=e.lat||e.center?.lat,lon=e.lon||e.center?.lon;if(lat&&lon){let t=e.tags||{},s=Object.keys(t).filter(k=>k.startsWith("socket:")).map(k=>k.substring(7)+": "+t[k]).join(", ");addCharger(lat,lon,t.name||"EV charging station",s||"Connector details not listed");}})).catch(()=>{});
+window.setLayer=function(layer){
+if(layer==="chargers"){if(map.hasLayer(chargerLayer))map.removeLayer(chargerLayer);else map.addLayer(chargerLayer);}
+if(layer==="range"){if(map.hasLayer(rangeLayer))map.removeLayer(rangeLayer);else{L.circle([25.055,-77.35],{radius:12000,color:"#16877e",fillColor:"#39b9aa",fillOpacity:.12}).addTo(rangeLayer);map.addLayer(rangeLayer);}}
+if(layer==="weather")alert("Live weather overlay is not connected yet.");
+if(layer==="trip")alert("Trip routing will be enabled with ABRP authorization.");
+};
+</script></body></html>
+"""
