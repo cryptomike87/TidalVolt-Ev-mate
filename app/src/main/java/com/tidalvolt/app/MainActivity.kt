@@ -2,6 +2,7 @@ package com.tidalvolt.app
 
 import android.os.Bundle
 import android.content.Context
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -267,6 +268,8 @@ private fun SavingsScreen(card: Color, fg: Color, accent: Color) {
 
 @Composable
 private fun MoreScreen(card: Color, fg: Color, accent: Color, dark: Boolean, setDark: (Boolean)->Unit) {
+    AbrpSettingsPanel(card, fg, accent)
+    Spacer(Modifier.height(12.dp))
     Panel(card) {
         Text("Appearance", color = fg, fontWeight = FontWeight.SemiBold, fontSize = 19.sp)
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
@@ -280,5 +283,27 @@ private fun MoreScreen(card: Color, fg: Color, accent: Color, dark: Boolean, set
         Text("About TidalVolt", color = fg, fontWeight = FontWeight.SemiBold)
         Text("Version 1.0.0 • Android foundation", color = fg.copy(alpha=.7f))
         Text("Designed for BYD vehicles first, with room to expand to other EV brands.", color = fg.copy(alpha=.7f))
+    }
+}
+
+@Composable
+private fun AbrpSettingsPanel(card: Color, fg: Color, accent: Color) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val prefs = remember { context.getSharedPreferences("tidalvolt_abrp", Context.MODE_PRIVATE) }
+    var apiKey by remember { mutableStateOf(prefs.getString("api_key", "") ?: "") }
+    var userToken by remember { mutableStateOf(prefs.getString("user_token", "") ?: "") }
+    var showToken by remember { mutableStateOf(false) }
+    Panel(card) {
+        Text("Integrations", color = fg, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.height(6.dp))
+        Text("A Better Routeplanner (ABRP)", color = accent, fontWeight = FontWeight.SemiBold)
+        Text("Configure ABRP access to retrieve your latest reported battery percentage. TidalVolt does not connect directly to the car.", color = fg.copy(alpha=.7f))
+        Spacer(Modifier.height(10.dp))
+        OutlinedTextField(value = apiKey, onValueChange = { apiKey = it }, label = { Text("ABRP API key") }, singleLine = true, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(value = userToken, onValueChange = { userToken = it }, label = { Text("ABRP user access token") }, singleLine = true, visualTransformation = if (showToken) androidx.compose.ui.text.input.VisualTransformation.None else PasswordVisualTransformation(), trailingIcon = { TextButton(onClick = { showToken = !showToken }) { Text(if (showToken) "Hide" else "Show") } }, modifier = Modifier.fillMaxWidth())
+        Spacer(Modifier.height(8.dp))
+        Button(onClick = { prefs.edit().putString("api_key", apiKey.trim()).putString("user_token", userToken.trim()).apply() }, enabled = apiKey.isNotBlank() && userToken.isNotBlank(), modifier = Modifier.fillMaxWidth()) { Text("Save ABRP credentials") }
+        Text(if (apiKey.isNotBlank() && userToken.isNotBlank()) "Credentials saved on this device. Telemetry retrieval is not active yet." else "Not configured", color = fg.copy(alpha=.75f), fontSize = 12.sp)
+        Text("ABRP must approve TidalVolt's OAuth application with the get_telemetry scope before live battery readings can be enabled. Do not share these credentials in chat.", color = fg.copy(alpha=.55f), fontSize = 11.sp)
     }
 }
