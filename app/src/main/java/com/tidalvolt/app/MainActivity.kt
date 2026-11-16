@@ -1,6 +1,8 @@
 package com.tidalvolt.app
 
 import android.os.Bundle
+import android.location.LocationManager
+import android.widget.Toast
 import android.content.Context
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import java.text.SimpleDateFormat
@@ -134,7 +136,26 @@ private fun MapScreen(card: Color, fg: Color, accent: Color, fullscreen: Boolean
     var webView by remember { mutableStateOf<WebView?>(null) }
     val context = androidx.compose.ui.platform.LocalContext.current
     var locationGranted by remember { mutableStateOf(ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED || ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED) }
-    val locationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result -> locationGranted = result[Manifest.permission.ACCESS_FINE_LOCATION] == true || result[Manifest.permission.ACCESS_COARSE_LOCATION] == true }
+    fun locateUser() {
+        try {
+            val manager = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
+            val location = listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)
+                .mapNotNull { provider -> runCatching { manager.getLastKnownLocation(provider) }.getOrNull() }
+                .maxByOrNull { it.time }
+            if (location != null) {
+                webView?.evaluateJavascript("centerOn(${location.latitude},${location.longitude})", null)
+            } else {
+                Toast.makeText(context, "Current location is not available yet. Turn on device location and try again.", Toast.LENGTH_LONG).show()
+            }
+        } catch (_: SecurityException) {
+            locationGranted = false
+            Toast.makeText(context, "Please allow location access to locate your vehicle.", Toast.LENGTH_LONG).show()
+        }
+    }
+    val locationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
+        locationGranted = result[Manifest.permission.ACCESS_FINE_LOCATION] == true || result[Manifest.permission.ACCESS_COARSE_LOCATION] == true
+        if (locationGranted) locateUser()
+    }
     Column(modifier.fillMaxSize().background(Color(0xFFE9EEE9))) {
         if (!fullscreen) {
             Row(Modifier.fillMaxWidth().background(card).padding(horizontal=14.dp, vertical=4.dp), horizontalArrangement=Arrangement.SpaceBetween, verticalAlignment=Alignment.CenterVertically) {
@@ -156,7 +177,7 @@ private fun MapScreen(card: Color, fg: Color, accent: Color, fullscreen: Boolean
                 }
             }, update={ webView=it })
             Row(Modifier.align(Alignment.TopEnd).padding(10.dp), horizontalArrangement=Arrangement.spacedBy(6.dp)) {
-                FilledTonalButton(onClick={ if (!locationGranted) locationPermission.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)) }, contentPadding=PaddingValues(horizontal=10.dp, vertical=8.dp)) { Icon(Icons.Default.MyLocation, contentDescription="Location"); Text("Locate") }
+                FilledTonalButton(onClick={ if (!locationGranted) locationPermission.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)) else locateUser() }, contentPadding=PaddingValues(horizontal=10.dp, vertical=8.dp)) { Icon(Icons.Default.MyLocation, contentDescription="Location"); Text("Locate") }
                 FilledTonalButton(onClick={showLayers=!showLayers}, contentPadding=PaddingValues(horizontal=12.dp, vertical=8.dp)) { Icon(Icons.Default.Layers, contentDescription=null); Spacer(Modifier.width(4.dp)); Text("Layers") }
                 FilledTonalButton(onClick={onFullscreen(!fullscreen)}, contentPadding=PaddingValues(horizontal=12.dp, vertical=8.dp)) { Icon(if(fullscreen) Icons.Default.FullscreenExit else Icons.Default.Fullscreen, contentDescription=null) }
             }
@@ -202,6 +223,8 @@ private fun ChargeScreen(card: Color, fg: Color, accent: Color) {
     var current by remember { mutableStateOf("") }
     var target by remember { mutableStateOf("90") }
     var rate by remember { mutableStateOf("0.55") }
+    var distanceSinceCharge by remember { mutableStateOf(prefs.getFloat("distance_since_charge", 0f).toString()) }
+    var petrolPrice by remember { mutableStateOf(prefs.getString("petrol_price", "6.85") ?: "6.85") }
     var sessionStart by remember { mutableStateOf(prefs.getLong("active_start_time", 0L)) }
     var sessionFrom by remember { mutableStateOf(prefs.getFloat("active_start_soc", -1f).toDouble()) }
     val history = remember {
@@ -264,7 +287,8 @@ private fun ChargeScreen(card: Color, fg: Color, accent: Color) {
                         val record = ChargeRecord(sessionStart, sessionFrom, endSoc, energy, cost)
                         history.add(0, record)
                         val serialized = history.take(50).joinToString("\n") { "${it.timestamp}|${it.from}|${it.to}|${it.kwh}|${it.cost}" }
-                        prefs.edit().putString("history", serialized).remove("active_start_time").remove("active_start_soc").apply()
+                        prefs.edit().putString("history", serialized).putFloat("distance_since_charge", 0f).remove("active_start_time").remove("active_start_soc").apply()
+                        distanceSinceCharge = "0"
                         sessionStart = 0L
                         sessionFrom = -1.0
                     }
@@ -273,6 +297,28 @@ private fun ChargeScreen(card: Color, fg: Color, accent: Color) {
                 modifier = Modifier.fillMaxWidth()
             ) { Text("Finish and save session") }
         }
+    }
+    Spacer(Modifier.height(14.dp))
+    Panel(card) {
+        Text("Savings since last charge", color=fg, fontWeight=FontWeight.SemiBold, fontSize=19.sp)
+        Text("Enter the miles driven since your previous charge. This counter resets when you finish and save a charging session.", color=fg.copy(alpha=.65f), fontSize=12.sp)
+        NumberField("Miles driven since last charge", distanceSinceCharge, {
+            distanceSinceCharge = it
+            it.toFloatOrNull()?.coerceAtLeast(0f)?.let { value -> prefs.edit().putFloat("distance_since_charge", value).apply() }
+        }, fg)
+        NumberField("Petrol price (BSD/gallon)", petrolPrice, {
+            petrolPrice = it
+            prefs.edit().putString("petrol_price", it).apply()
+        }, fg)
+        val miles = distanceSinceCharge.toDoubleOrNull()?.coerceAtLeast(0.0) ?: 0.0
+        val gas = petrolPrice.toDoubleOrNull()?.coerceAtLeast(0.0) ?: 0.0
+        val evCost = miles * 20.0 / 100.0 * (rate.toDoubleOrNull()?.coerceAtLeast(0.0) ?: 0.55)
+        val petrolCost = miles / 15.0 * gas
+        Spacer(Modifier.height(8.dp))
+        Metric("Estimated EV cost", "BSD $%.2f".format(evCost), fg)
+        Metric("Estimated petrol cost", "BSD $%.2f".format(petrolCost), fg)
+        Text("Estimated savings: BSD $%.2f".format(petrolCost - evCost), color=accent, fontSize=24.sp, fontWeight=FontWeight.Bold)
+        Text("Estimate uses 20 kWh/100 mi, 15 MPG and your electricity and petrol prices. Mileage is currently entered manually; automatic odometer tracking is not connected.", color=fg.copy(alpha=.6f), fontSize=11.sp)
     }
     Spacer(Modifier.height(14.dp))
     Panel(card) {
@@ -398,6 +444,7 @@ const chargerLayer=L.layerGroup().addTo(map), rangeLayer=L.layerGroup();
 function addCharger(lat,lon,name,info){L.marker([lat,lon]).addTo(chargerLayer).bindPopup("<b>"+name+"</b><br>"+info);}
 fetch("https://overpass-api.de/api/interpreter?data="+encodeURIComponent('[out:json][timeout:20];(node["amenity"="charging_station"](24.95,-77.58,25.13,-77.18);way["amenity"="charging_station"](24.95,-77.58,25.13,-77.18););out center;'))
 .then(r=>r.json()).then(d=>d.elements.forEach(e=>{let lat=e.lat||e.center?.lat,lon=e.lon||e.center?.lon;if(lat&&lon){let t=e.tags||{},s=Object.keys(t).filter(k=>k.startsWith("socket:")).map(k=>k.substring(7)+": "+t[k]).join(", ");addCharger(lat,lon,t.name||"EV charging station",s||"Connector details not listed");}})).catch(()=>{});
+window.centerOn=function(lat,lon){map.setView([lat,lon],15);L.circleMarker([lat,lon],{radius:8,color:"#ffffff",weight:3,fillColor:"#16877e",fillOpacity:1}).addTo(map).bindPopup("Your current location").openPopup();};
 window.setLayer=function(layer){
 if(layer==="chargers"){if(map.hasLayer(chargerLayer))map.removeLayer(chargerLayer);else map.addLayer(chargerLayer);}
 if(layer==="range"){if(map.hasLayer(rangeLayer))map.removeLayer(rangeLayer);else{L.circle([25.055,-77.35],{radius:12000,color:"#16877e",fillColor:"#39b9aa",fillOpacity:.12}).addTo(rangeLayer);map.addLayer(rangeLayer);}}
