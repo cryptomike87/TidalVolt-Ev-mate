@@ -16,28 +16,21 @@ Open this repository in Android Studio, or run the **TidalVolt Android CI** work
 
 ## Live vehicle telemetry
 
-TidalVolt supports two read-only MQTT sources:
+### Built-in local receiver (recommended)
+TidalVolt can host a password-protected MQTT broker directly on the phone. This removes the need for a cloud broker account or a separate always-on server.
 
-### Recommended: OverDrive
-OverDrive reads vehicle telemetry through the BYD SDK on the DiLink head unit and publishes a full JSON snapshot to MQTT. On the vehicle, open **OverDrive → MQTT → Add Connection** and configure:
+1. Open TidalVolt → More → Vehicle data connection → **Start local receiver**.
+2. Connect the BYD DiLink head unit to the phone's Wi-Fi hotspot. The phone and car must be on the same local network.
+3. In OverDrive → MQTT → Add Connection, enter the phone network address, port `1883`, the generated username/password shown by TidalVolt, and topic `overdrive/vehicle/telemetry`.
+4. Keep Home Assistant discovery OFF (Aggregate mode) and **Allow vehicle control OFF**.
+5. In TidalVolt, tap **Connect TidalVolt to its receiver**.
 
-- Broker: the same broker hostname/IP, port and credentials entered in TidalVolt.
-- Topic: `overdrive/vehicle/telemetry` (or the custom topic you choose).
-- **Home Assistant discovery: OFF** — this selects Aggregate mode and publishes the complete JSON snapshot to one topic. Home Assistant mode publishes individual field topics instead.
-- **Allow vehicle control: OFF** — TidalVolt is a telemetry viewer only.
-- Publish interval: 5–10 seconds while driving; use a slower parked heartbeat to limit data usage.
-
-In TidalVolt, open **More → Integrations**, enter the same broker settings and subscribe to `overdrive/vehicle/telemetry`. Port 8883 uses TLS; port 1883 is unencrypted. The host field also accepts an `ssl://` prefix when using TLS.
-
-For a private broker reachable over Tailscale, enable the **Tailscale proxy** in OverDrive and enter the broker's Tailscale IP or MagicDNS hostname in both apps. The broker itself must be running and reachable from the tailnet; Tailscale is the private network path, not an MQTT broker.
-
-### Alternative: BYD Trip Stats
-Install and configure BYD Trip Stats on a compatible BYD DiLink head unit, enable its MQTT publisher, and point both apps at the same broker. Its example state topic is `byd-trip-stats/yuanpro/state`; set the device friendly name to `yuanpro` or enter the actual topic in TidalVolt.
+The broker runs inside the TidalVolt app process and listens on the phone's network interfaces. Keep TidalVolt open during this initial test; a future foreground-service implementation is needed for robust background operation. The local MQTT connection is not TLS-encrypted, so use it only on a trusted private hotspot and do not share the generated password.
 
 ### Data handling
-TidalVolt accepts OverDrive fields including SOC, EV range, speed, motor and charging power, charge state, battery temperature, odometer, SOH, HV pack voltage, cell-voltage extrema and charging ETA. BYD Trip Stats field names are also supported. Kilometres and km/h are converted to miles and mph for display. Missing fields remain unavailable; OverDrive's estimated SOH is kept distinct from OEM-reported SOH.
+TidalVolt accepts OverDrive fields including SOC, EV range, speed, motor and charging power, charge state, battery temperature, odometer, SOH, HV pack voltage, cell-voltage extrema and charging ETA. Missing fields remain unavailable; OverDrive's estimated SOH is kept distinct from OEM-reported SOH.
 
-The integration is read-only: TidalVolt subscribes to telemetry and never publishes vehicle commands. MQTT broker hosting and network access are separate from the free MQTT protocol/client libraries.
+The integration is read-only from TidalVolt's side: TidalVolt subscribes to telemetry and never publishes vehicle commands. The OverDrive control option must remain disabled.
 
 ## Compatibility and licensing
 BYD Trip Stats compatibility must be confirmed on the target vehicle/head-unit firmware. Its source is licensed under BUSL-1.1; TidalVolt uses its documented MQTT data interface and does not copy or redistribute its source code.
