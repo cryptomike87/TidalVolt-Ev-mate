@@ -16,6 +16,12 @@ android {
         versionName = "1.0.0"
     }
 
+    packaging {
+        resources {
+            excludes += "META-INF/INDEX.LIST"
+        }
+    }
+
     buildFeatures { compose = true }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
