@@ -125,11 +125,33 @@ private fun VehicleScreen(card: Color, fg: Color, accent: Color) {
             Spacer(Modifier.height(8.dp))
             Metric("Battery temperature", "%.1f °C".format(it), fg)
         }
+        telemetry?.let { data ->
+            Spacer(Modifier.height(12.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Metric("Battery health", data.batterySohOem?.let { "%.1f%% OEM".format(it) }
+                    ?: data.batterySoh?.let { "%.1f%% estimated".format(it) } ?: "Unavailable", fg)
+                Metric("Pack voltage", data.packVoltageV?.let { "%.1f V".format(it) } ?: "Unavailable", fg)
+            }
+            Spacer(Modifier.height(10.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Metric("Charging power", data.chargingPowerKw?.let { "%.1f kW".format(it) } ?: "Unavailable", fg)
+                Metric("Odometer", data.odometerMiles?.let { "%.0f mi".format(it) } ?: "Unavailable", fg)
+            }
+            if (data.cellVoltageMinV != null || data.cellVoltageMaxV != null) {
+                Spacer(Modifier.height(8.dp))
+                Metric("Cell voltage min / max",
+                    "${data.cellVoltageMinV?.let { "%.3f".format(it) } ?: "—"} / ${data.cellVoltageMaxV?.let { "%.3f".format(it) } ?: "—"} V", fg)
+            }
+            if (data.chargingEtaMinutes != null) {
+                Spacer(Modifier.height(8.dp))
+                Metric("Estimated time to full", "%.0f min".format(data.chargingEtaMinutes), fg)
+            }
+        }
     }
     Spacer(Modifier.height(14.dp))
     Panel(card) {
         Text("Vehicle connection", color = fg, fontWeight = FontWeight.SemiBold)
-        Text(if (telemetry != null) "Receiving live data from BYD Trip Stats over MQTT. Confirm the readings against the vehicle display during initial testing." else "Not receiving telemetry yet. Install and configure BYD Trip Stats on a compatible BYD head unit, enable its MQTT publisher, and use the same broker and topic in More → Integrations.", color = fg.copy(alpha=.7f))
+        Text(if (telemetry != null) "Receiving live vehicle data over MQTT. Confirm readings against the vehicle display during initial testing." else "Not receiving telemetry yet. Configure OverDrive or BYD Trip Stats to publish to the same MQTT broker and topic shown in More → Integrations.", color = fg.copy(alpha=.7f))
         Text("Connection: ${MqttTelemetryManager.status.value}", color = accent, fontSize = 12.sp)
     }
 }
@@ -428,7 +450,7 @@ private fun MqttSettingsPanel(card: Color, fg: Color, accent: Color) {
     val prefs = remember { context.getSharedPreferences("tidalvolt_mqtt", Context.MODE_PRIVATE) }
     var host by remember { mutableStateOf(prefs.getString("host", "") ?: "") }
     var port by remember { mutableStateOf(prefs.getString("port", "8883") ?: "8883") }
-    var topic by remember { mutableStateOf(prefs.getString("topic", "byd-trip-stats/yuanpro/state") ?: "byd-trip-stats/yuanpro/state") }
+    var topic by remember { mutableStateOf(prefs.getString("topic", "overdrive/vehicle/telemetry") ?: "overdrive/vehicle/telemetry") }
     var username by remember { mutableStateOf(prefs.getString("username", "") ?: "") }
     var password by remember { mutableStateOf(prefs.getString("password", "") ?: "") }
     var showPassword by remember { mutableStateOf(false) }
@@ -437,16 +459,16 @@ private fun MqttSettingsPanel(card: Color, fg: Color, accent: Color) {
     Panel(card) {
         Text("Integrations", color = fg, fontSize = 20.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(6.dp))
-        Text("BYD Trip Stats • MQTT telemetry", color = accent, fontWeight = FontWeight.SemiBold)
-        Text("Receive live vehicle data from BYD Trip Stats without ABRP. TidalVolt subscribes to the telemetry topic; BYD Trip Stats remains the vehicle-side data reader.", color = fg.copy(alpha=.7f))
+        Text("OverDrive / BYD Trip Stats • MQTT telemetry", color = accent, fontWeight = FontWeight.SemiBold)
+        Text("Connect TidalVolt to OverDrive's live vehicle telemetry or BYD Trip Stats. TidalVolt only subscribes; it never sends vehicle commands.", color = fg.copy(alpha=.7f))
         Spacer(Modifier.height(10.dp))
-        OutlinedTextField(value = host, onValueChange = { host = it }, label = { Text("MQTT broker hostname") }, placeholder = { Text("Your HiveMQ Cloud hostname") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(value = host, onValueChange = { host = it }, label = { Text("MQTT broker hostname") }, placeholder = { Text("Broker hostname or Tailscale IP") }, singleLine = true, modifier = Modifier.fillMaxWidth())
         OutlinedTextField(value = port, onValueChange = { port = it.filter(Char::isDigit).take(5) }, label = { Text("Broker port") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth())
         OutlinedTextField(value = topic, onValueChange = { topic = it }, label = { Text("Telemetry topic") }, singleLine = true, modifier = Modifier.fillMaxWidth())
         OutlinedTextField(value = username, onValueChange = { username = it }, label = { Text("Broker username") }, singleLine = true, modifier = Modifier.fillMaxWidth())
         OutlinedTextField(value = password, onValueChange = { password = it }, label = { Text("Broker password") }, singleLine = true, visualTransformation = if (showPassword) androidx.compose.ui.text.input.VisualTransformation.None else PasswordVisualTransformation(), trailingIcon = { TextButton(onClick = { showPassword = !showPassword }) { Text(if (showPassword) "Hide" else "Show") } }, modifier = Modifier.fillMaxWidth())
         Spacer(Modifier.height(8.dp))
-        Text("Use the same broker credentials in BYD Trip Stats → Settings → Connections → MQTT. Set its device friendly name to yuanpro so the default topic matches. Port 8883 uses TLS; port 1883 uses an unencrypted connection.", color = fg.copy(alpha=.6f), fontSize = 11.sp)
+        Text("OVERDRIVE SETUP: Open OverDrive → MQTT → Add Connection. Use this same broker, credentials and topic: overdrive/vehicle/telemetry. Select Aggregate mode by leaving Home Assistant discovery OFF, and keep Allow vehicle control OFF. Set the publish interval to 5–10 seconds while driving and a slower heartbeat when parked. Enable OverDrive's Tailscale proxy if the broker is reachable through your tailnet. Port 8883 uses TLS; 1883 is unencrypted.", color = fg.copy(alpha=.6f), fontSize = 11.sp)
         Spacer(Modifier.height(8.dp))
         Button(
             onClick = {
@@ -458,7 +480,7 @@ private fun MqttSettingsPanel(card: Color, fg: Color, accent: Color) {
         ) { Text("Save and connect") }
         OutlinedButton(onClick = { MqttTelemetryManager.disconnect() }, modifier = Modifier.fillMaxWidth()) { Text("Disconnect") }
         Text("Status: $connectionStatus", color = if (connectionStatus == "Connected") accent else fg.copy(alpha=.7f), fontWeight = FontWeight.SemiBold)
-        Text("Live telemetry is not shown until a valid message arrives. Credentials are stored locally on this device. Do not reuse a password you use elsewhere.", color = fg.copy(alpha=.55f), fontSize = 11.sp)
+        Text("For BYD Trip Stats, select its state topic instead (for example byd-trip-stats/yuanpro/state). Live telemetry is not shown until a valid JSON message arrives. Credentials are stored locally on this device. Keep OverDrive vehicle-control publishing disabled; TidalVolt is read-only.", color = fg.copy(alpha=.55f), fontSize = 11.sp)
     }
 }
 
