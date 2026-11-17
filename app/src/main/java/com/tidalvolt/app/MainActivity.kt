@@ -151,7 +151,7 @@ private fun VehicleScreen(card: Color, fg: Color, accent: Color) {
     Spacer(Modifier.height(14.dp))
     Panel(card) {
         Text("Vehicle connection", color = fg, fontWeight = FontWeight.SemiBold)
-        Text(if (telemetry != null) "Receiving live vehicle data from OverDrive. Confirm readings against the vehicle display during initial testing." else "Not receiving telemetry yet. Start the TidalVolt local receiver in More, then point OverDrive at the phone's hotspot address.", color = fg.copy(alpha=.7f))
+        Text(if (telemetry != null) "Receiving live vehicle data from OverDrive. Confirm readings against the vehicle display during initial testing." else "Direct BYD head-unit connection is being prepared. No external receiver is required for the planned approach.", color = fg.copy(alpha=.7f))
         Text("Connection: ${MqttTelemetryManager.status.value}", color = accent, fontSize = 12.sp)
     }
 }
@@ -426,7 +426,10 @@ private fun StatsScreen(card: Color, fg: Color, accent: Color) {
 }
 @Composable
 private fun MoreScreen(card: Color, fg: Color, accent: Color, dark: Boolean, setDark: (Boolean)->Unit) {
-    EmbeddedMqttSettingsPanel(card, fg, accent)
+    Panel(card) {
+        Text("Vehicle data connection", color = fg, fontWeight = FontWeight.SemiBold, fontSize = 19.sp)
+        Text("Direct BYD head-unit access is the current development priority. The MQTT receiver setup is temporarily hidden while we test the vehicle's built-in data services.", color = fg.copy(alpha=.7f))
+    }
     Spacer(Modifier.height(12.dp))
     Panel(card) {
         Text("Appearance", color = fg, fontWeight = FontWeight.SemiBold, fontSize = 19.sp)
