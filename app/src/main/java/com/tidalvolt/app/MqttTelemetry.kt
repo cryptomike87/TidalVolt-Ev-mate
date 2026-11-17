@@ -14,8 +14,8 @@ import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence
 import org.json.JSONObject
 
 /**
- * TidalVolt's normalized, read-only view of the BYD Trip Stats MQTT state payload.
- * Missing values stay null; they are never displayed as zero.
+ * Normalized, read-only vehicle telemetry from OverDrive or BYD Trip Stats.
+ * Missing fields remain null. OverDrive's estimated SOH is kept distinct from OEM SOH.
  */
 data class EvTelemetry(
     val soc: Double? = null,
@@ -28,6 +28,16 @@ data class EvTelemetry(
     val longitude: Double? = null,
     val batteryTempC: Double? = null,
     val odometerMiles: Double? = null,
+    val batterySoh: Double? = null,
+    val batterySohOem: Double? = null,
+    val packVoltageV: Double? = null,
+    val cellVoltageMinV: Double? = null,
+    val cellVoltageMaxV: Double? = null,
+    val cellVoltageDeltaV: Double? = null,
+    val batteryCapacityKwh: Double? = null,
+    val cellTempMinC: Double? = null,
+    val cellTempMaxC: Double? = null,
+    val chargingEtaMinutes: Double? = null,
     val receivedAtMillis: Long = System.currentTimeMillis()
 ) {
     companion object {
@@ -35,21 +45,62 @@ data class EvTelemetry(
 
         fun fromJson(payload: String): EvTelemetry {
             val json = JSONObject(payload)
-            fun number(key: String): Double? {
-                if (!json.has(key) || json.isNull(key)) return null
-                return json.optDouble(key).takeIf { it.isFinite() }
+
+            fun number(vararg keys: String): Double? {
+                for (key in keys) {
+                    if (!json.has(key) || json.isNull(key)) continue
+                    val value = json.opt(key)
+                    val parsed = when (value) {
+                        is Number -> value.toDouble()
+                        is String -> value.trim().toDoubleOrNull()
+                        else -> null
+                    }
+                    if (parsed != null && parsed.isFinite()) return parsed
+                }
+                return null
             }
+
+            fun boolean(vararg keys: String): Boolean? {
+                for (key in keys) {
+                    if (!json.has(key) || json.isNull(key)) continue
+                    return when (val value = json.opt(key)) {
+                        is Boolean -> value
+                        is Number -> value.toDouble() != 0.0
+                        is String -> when (value.trim().lowercase()) {
+                            "1", "true", "yes", "on", "charging" -> true
+                            "0", "false", "no", "off", "idle", "not_charging" -> false
+                            else -> null
+                        }
+                        else -> null
+                    }
+                }
+                return null
+            }
+
+            val etaMinutes = number("charging_eta_minutes")
+                ?: number("charging_eta_hours")?.times(60.0)
+
             return EvTelemetry(
-                soc = number("soc") ?: number("soc_panel"),
-                rangeMiles = number("electric_driving_range_km")?.times(KM_TO_MILES),
+                soc = number("soc", "soc_panel"),
+                rangeMiles = number("ev_range_km", "electric_driving_range_km")?.times(KM_TO_MILES),
                 speedMph = number("speed")?.times(KM_TO_MILES),
-                motorPowerKw = number("engine_power"),
-                chargingPowerKw = number("charging_power"),
-                isCharging = if (json.has("is_charging") && !json.isNull("is_charging")) json.optBoolean("is_charging") else null,
-                latitude = number("location_latitude"),
-                longitude = number("location_longitude"),
-                batteryTempC = number("battery_pack_temp"),
-                odometerMiles = number("odometer")?.times(KM_TO_MILES)
+                motorPowerKw = number("power", "engine_power"),
+                chargingPowerKw = number("charge_power", "charging_power"),
+                isCharging = boolean("is_charging"),
+                latitude = number("lat", "location_latitude"),
+                longitude = number("lon", "location_longitude"),
+                batteryTempC = number("batt_temp", "battery_pack_temp"),
+                odometerMiles = number("odometer")?.times(KM_TO_MILES),
+                batterySoh = number("soh"),
+                batterySohOem = number("soh_oem"),
+                packVoltageV = number("hv_pack_v"),
+                cellVoltageMinV = number("cell_v_min"),
+                cellVoltageMaxV = number("cell_v_max"),
+                cellVoltageDeltaV = number("cell_v_delta"),
+                batteryCapacityKwh = number("capacity"),
+                cellTempMinC = number("cell_t_min"),
+                cellTempMaxC = number("cell_t_max"),
+                chargingEtaMinutes = etaMinutes
             )
         }
     }
@@ -60,8 +111,8 @@ object TelemetryStore {
 }
 
 /**
- * MQTT subscriber for the documented BYD Trip Stats state topic.
- * The car-side BYD Trip Stats app publishes telemetry; TidalVolt only subscribes.
+ * Read-only MQTT subscriber. OverDrive publishes a complete JSON snapshot in
+ * Aggregate mode; BYD Trip Stats can publish its documented state JSON topic too.
  */
 object MqttTelemetryManager {
     val status = mutableStateOf("Not connected")
@@ -70,12 +121,23 @@ object MqttTelemetryManager {
 
     fun connect(host: String, port: Int, topic: String, username: String, password: String) {
         disconnect(updateStatus = false)
-        val cleanHost = host.trim().removePrefix("ssl://").removePrefix("tcp://").trimEnd('/')
+        val rawHost = host.trim()
+        val explicitScheme = when {
+            rawHost.startsWith("ssl://", ignoreCase = true) -> "ssl://"
+            rawHost.startsWith("tcp://", ignoreCase = true) -> "tcp://"
+            else -> null
+        }
+        val cleanHost = rawHost
+            .removePrefix("ssl://")
+            .removePrefix("SSL://")
+            .removePrefix("tcp://")
+            .removePrefix("TCP://")
+            .trimEnd('/')
         if (cleanHost.isBlank() || topic.isBlank() || port !in 1..65535) {
             setStatus("Invalid broker settings")
             return
         }
-        val scheme = if (port == 8883 || port == 8884) "ssl://" else "tcp://"
+        val scheme = explicitScheme ?: if (port == 8883) "ssl://" else "tcp://"
         val uri = "$scheme$cleanHost:$port"
         setStatus("Connecting…")
         try {
@@ -83,7 +145,7 @@ object MqttTelemetryManager {
             mqttClient = client
             client.setCallback(object : MqttCallbackExtended {
                 override fun connectComplete(reconnect: Boolean, serverURI: String) {
-                    setStatus("Connected")
+                    setStatus(if (reconnect) "Reconnected" else "Connected")
                     try {
                         client.subscribe(topic, 0, null, object : IMqttActionListener {
                             override fun onSuccess(asyncActionToken: IMqttToken?) {
@@ -105,7 +167,10 @@ object MqttTelemetryManager {
                 override fun messageArrived(receivedTopic: String, message: MqttMessage) {
                     try {
                         val parsed = EvTelemetry.fromJson(message.payload.toString(Charsets.UTF_8))
-                        mainHandler.post { TelemetryStore.latest.value = parsed }
+                        mainHandler.post {
+                            TelemetryStore.latest.value = parsed
+                            setStatus("Connected • live data received")
+                        }
                     } catch (_: Exception) {
                         setStatus("Connected • received an unreadable telemetry message")
                     }
@@ -123,7 +188,6 @@ object MqttTelemetryManager {
             }
             client.connect(options, null, object : IMqttActionListener {
                 override fun onSuccess(asyncActionToken: IMqttToken?) {
-                    // connectComplete performs the subscription for both initial and automatic reconnects.
                     setStatus("Connected")
                 }
                 override fun onFailure(asyncActionToken: IMqttToken?, exception: Throwable?) {
