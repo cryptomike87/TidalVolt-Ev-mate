@@ -19,7 +19,8 @@ fun EmbeddedMqttSettingsPanel(card: Color, fg: Color, accent: Color) {
     val password by EmbeddedMqttBrokerManager.brokerPassword
     val telemetryStatus by MqttTelemetryManager.status
 
-    Panel(card) {
+    Card(colors = CardDefaults.cardColors(containerColor = card), shape = MaterialTheme.shapes.extraLarge, modifier = Modifier.fillMaxWidth()) {
+      Column(Modifier.padding(18.dp)) {
         Text("Vehicle data connection", color = fg, fontSize = 20.sp, fontWeight = FontWeight.Bold)
         Text("TidalVolt Local Receiver", color = accent, fontWeight = FontWeight.SemiBold)
         Text(
@@ -82,5 +83,6 @@ fun EmbeddedMqttSettingsPanel(card: Color, fg: Color, accent: Color) {
             "Security: the local receiver requires a generated password. Keep it private and only share it with OverDrive on your own vehicle. Vehicle commands are not enabled by TidalVolt.",
             color = fg.copy(alpha = .55f), fontSize = 11.sp
         )
+      }
     }
 }
