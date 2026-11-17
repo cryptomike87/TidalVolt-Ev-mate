@@ -33,5 +33,6 @@ dependencies {
     implementation("androidx.compose.material:material-icons-extended")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
     implementation("org.eclipse.paho:org.eclipse.paho.client.mqttv3:1.2.5")
+    implementation("io.moquette:moquette-broker:0.17")
     debugImplementation("androidx.compose.ui:ui-tooling")
 }
