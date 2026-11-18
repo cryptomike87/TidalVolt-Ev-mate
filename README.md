@@ -37,12 +37,14 @@ The phone receiver and JSON parser are implemented, but the OverDrive sender int
 
 The receiver currently runs while the TidalVolt app process is alive. A foreground service / reconnect lifecycle is a later hardening step before relying on unattended collection.
 
-## WhatsApp
+## Android notifications
 
-- Manual vehicle-status sharing uses Android's share sheet and can be sent through the regular WhatsApp app.
-- Manual daily-report sharing is included.
-- Preferences are stored for charging started, charging completed, battery threshold, trip completed and daily report, with an editable battery threshold.
-- Automatic WhatsApp delivery is not active yet. It requires a WhatsApp Business Platform integration, an approved message template for business-initiated messages, and secure configuration of the sender and recipient. The app must not claim an automatic WhatsApp message was delivered until the provider confirms success.
+- No WhatsApp integration, phone number, Business API, MQTT broker or paid messaging service.
+- Android notifications are generated locally from received vehicle telemetry.
+- Charging-start, charging-stop, low-battery threshold and a conservative stopped-for-three-minutes trip-completion heuristic are implemented.
+- Notification preferences are stored on the phone. Android 13+ notification permission is requested on first launch.
+- Daily-report notification scheduling is not yet implemented.
+- Trip detection is provisional and must be validated against real OverDrive update cadence before being relied on.
 
 ## Local history
 
