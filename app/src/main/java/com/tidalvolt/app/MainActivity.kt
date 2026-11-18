@@ -62,7 +62,7 @@ private data class WeatherSnapshot(
 )
 
 private fun fetchWeather(lat: Double, lon: Double): WeatherSnapshot {
-    val url = java.net.URL("https://api.open-meteo.com/v1/forecast?latitude=$lat&longitude=$lon&current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,weather_code,wind_speed_10m&hourly=temperature_2m,precipitation_probability&forecast_days=1&timezone=auto")
+    val url = java.net.URL("https://api.open-meteo.com/v1/forecast?latitude=$lat&longitude=$lon&current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,weather_code,wind_speed_10m&hourly=temperature_2m,precipitation_probability&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch&forecast_days=1&timezone=auto")
     val connection = (url.openConnection() as java.net.HttpURLConnection).apply {
         connectTimeout = 12000
         readTimeout = 12000
@@ -130,14 +130,14 @@ private fun WeatherScreen(card: Color, fg: Color, accent: Color) {
             Text("Loading current conditions…", color=fg.copy(alpha=.7f))
         } else if (weather != null) {
             val w = weather!!
-            Text("${w.temperature.toInt()}°", color=accent, fontSize=56.sp, fontWeight=FontWeight.Bold)
+            Text("${w.temperature.toInt()}°F", color=accent, fontSize=56.sp, fontWeight=FontWeight.Bold)
             Text(weatherDescription(w.code), color=fg, fontSize=20.sp, fontWeight=FontWeight.SemiBold)
             Text("Feels like ${w.apparent?.let { "${it.toInt()}°" } ?: "—"}", color=fg.copy(alpha=.7f))
             Spacer(Modifier.height(12.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement=Arrangement.SpaceBetween) {
                 Column { Text("Humidity", color=fg.copy(alpha=.6f), fontSize=12.sp); Text(w.humidity?.let { "$it%" } ?: "—", color=fg, fontWeight=FontWeight.Bold) }
-                Column { Text("Wind", color=fg.copy(alpha=.6f), fontSize=12.sp); Text(w.wind?.let { "%.0f km/h".format(it) } ?: "—", color=fg, fontWeight=FontWeight.Bold) }
-                Column { Text("Rain", color=fg.copy(alpha=.6f), fontSize=12.sp); Text(w.precipitation?.let { "%.1f mm".format(it) } ?: "—", color=fg, fontWeight=FontWeight.Bold) }
+                Column { Text("Wind", color=fg.copy(alpha=.6f), fontSize=12.sp); Text(w.wind?.let { "%.0f mph".format(it) } ?: "—", color=fg, fontWeight=FontWeight.Bold) }
+                Column { Text("Rain", color=fg.copy(alpha=.6f), fontSize=12.sp); Text(w.precipitation?.let { "%.2f in".format(it) } ?: "—", color=fg, fontWeight=FontWeight.Bold) }
             }
             Spacer(Modifier.height(12.dp))
             Text("Updated $refreshedAt • refreshes every 15 minutes", color=fg.copy(alpha=.55f), fontSize=11.sp)
@@ -152,7 +152,7 @@ private fun WeatherScreen(card: Color, fg: Color, accent: Color) {
         else w.hourlyTimes.indices.forEach { i ->
             Row(Modifier.fillMaxWidth().padding(vertical=6.dp), horizontalArrangement=Arrangement.SpaceBetween) {
                 Text(w.hourlyTimes[i], color=fg.copy(alpha=.7f))
-                Text("${w.hourlyTemps[i].toInt()}°", color=fg, fontWeight=FontWeight.SemiBold)
+                Text("${w.hourlyTemps[i].toInt()}°F", color=fg, fontWeight=FontWeight.SemiBold)
             }
             HorizontalDivider()
         }
