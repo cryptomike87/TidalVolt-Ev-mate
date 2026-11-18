@@ -108,6 +108,53 @@ data class EvTelemetry(
 
 object TelemetryStore {
     val latest = mutableStateOf<EvTelemetry?>(null)
+    val historyCount = mutableStateOf(0)
+    val lastSavedAt = mutableStateOf(0L)
+    private const val PREFS = "tidalvolt_vehicle_archive"
+    private const val LATEST_KEY = "latest_snapshot"
+    private const val HISTORY_KEY = "snapshot_history"
+    private const val MAX_SNAPSHOTS = 2000
+    @Volatile private var appContext: android.content.Context? = null
+
+    fun initialize(context: android.content.Context) {
+        val app = context.applicationContext
+        appContext = app
+        val prefs = app.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE)
+        runCatching {
+            prefs.getString(LATEST_KEY, null)?.let { raw -> latest.value = EvTelemetry.fromJson(raw) }
+            val history = org.json.JSONArray(prefs.getString(HISTORY_KEY, "[]"))
+            historyCount.value = history.length()
+            lastSavedAt.value = latest.value?.receivedAtMillis ?: 0L
+        }
+    }
+
+    fun save(payload: String, telemetry: EvTelemetry) {
+        val context = appContext ?: return
+        runCatching {
+            val prefs = context.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE)
+            val history = org.json.JSONArray(prefs.getString(HISTORY_KEY, "[]"))
+            history.put(org.json.JSONObject().put("receivedAt", telemetry.receivedAtMillis).put("payload", payload))
+            val trimmed = org.json.JSONArray()
+            val start = (history.length() - MAX_SNAPSHOTS).coerceAtLeast(0)
+            for (i in start until history.length()) trimmed.put(history.getJSONObject(i))
+            prefs.edit().putString(LATEST_KEY, payload).putString(HISTORY_KEY, trimmed.toString()).commit()
+            latest.value = telemetry
+            historyCount.value = trimmed.length()
+            lastSavedAt.value = telemetry.receivedAtMillis
+        }
+    }
+
+    fun recentSnapshots(limit: Int = 30): List<EvTelemetry> {
+        val context = appContext ?: return emptyList()
+        return runCatching {
+            val history = org.json.JSONArray(context.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE).getString(HISTORY_KEY, "[]"))
+            val result = mutableListOf<EvTelemetry>()
+            for (i in (history.length() - limit).coerceAtLeast(0) until history.length()) {
+                result.add(EvTelemetry.fromJson(history.getJSONObject(i).getString("payload")))
+            }
+            result.reversed()
+        }.getOrDefault(emptyList())
+    }
 }
 
 /**
@@ -168,8 +215,8 @@ object MqttTelemetryManager {
                     try {
                         val parsed = EvTelemetry.fromJson(message.payload.toString(Charsets.UTF_8))
                         mainHandler.post {
-                            TelemetryStore.latest.value = parsed
-                            setStatus("Connected • live data received")
+                            TelemetryStore.save(message.payload.toString(Charsets.UTF_8), parsed)
+                            setStatus("Connected • live data saved on device")
                         }
                     } catch (_: Exception) {
                         setStatus("Connected • received an unreadable telemetry message")
