@@ -39,7 +39,7 @@ object TelemetryReceiverServer {
         val address = tailscaleAddress ?: localAddress
         endpoint.value = when {
             tailscaleAddress != null -> "ws://$tailscaleAddress:$PORT/tidalvolt?token=$pairingToken"
-            localAddress != null -> "ws://$localAddress:$PORT/tidalvolt?token=$pairingToken (local network only — connect Tailscale for remote access)"
+            localAddress != null -> "ws://$localAddress:$PORT/tidalvolt?token=$pairingToken"
             else -> "Tailscale not connected — enable Tailscale on this phone"
         }
         status.value = "Starting receiver…"
@@ -80,7 +80,11 @@ object TelemetryReceiverServer {
 
             override fun onStart() {
                 running.set(true)
-                status.value = "Waiting for OverDrive"
+                status.value = if (tailscaleAddress != null) {
+                    "Waiting for OverDrive • Tailscale ready"
+                } else {
+                    "Waiting for OverDrive • local network only"
+                }
             }
         }
         server = instance
