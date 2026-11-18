@@ -108,7 +108,7 @@ private fun VehicleScreen(card: Color, fg: Color, accent: Color) {
         Text("Live vehicle overview", color = fg.copy(alpha=.65f))
         Spacer(Modifier.height(20.dp))
         Text(telemetry?.soc?.let { "%.0f%%".format(it) } ?: "—", color = accent, fontSize = 54.sp, fontWeight = FontWeight.Bold)
-        Text(if (telemetry != null) "Battery level • Live OverDrive telemetry" else "Battery level • Waiting for live vehicle data", color = fg.copy(alpha=.65f))
+        Text(if (telemetry != null) "Battery level • Live vehicle telemetry" else "Battery level • Waiting for live vehicle data", color = fg.copy(alpha=.65f))
         Spacer(Modifier.height(12.dp))
         LinearProgressIndicator(progress = { ((telemetry?.soc ?: 0.0) / 100.0).toFloat().coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth(), color = accent)
         Spacer(Modifier.height(18.dp))
@@ -151,8 +151,8 @@ private fun VehicleScreen(card: Color, fg: Color, accent: Color) {
     Spacer(Modifier.height(14.dp))
     Panel(card) {
         Text("Vehicle connection", color = fg, fontWeight = FontWeight.SemiBold)
-        Text(if (telemetry != null) "Receiving live vehicle data from OverDrive. Confirm readings against the vehicle display during initial testing." else "Direct BYD head-unit connection is being prepared. No external receiver is required for the planned approach.", color = fg.copy(alpha=.7f))
-        Text("Connection: ${MqttTelemetryManager.status.value}", color = accent, fontSize = 12.sp)
+        Text(if (telemetry != null) "Receiving live vehicle data. Confirm readings against the vehicle display during initial testing." else "No live BYD telemetry has been received yet. Run the head-unit connection check in More.", color = fg.copy(alpha=.7f))
+        Text("Connection: ${DirectBydAdbManager.status.value}", color = accent, fontSize = 12.sp)
     }
 }
 
@@ -426,9 +426,26 @@ private fun StatsScreen(card: Color, fg: Color, accent: Color) {
 }
 @Composable
 private fun MoreScreen(card: Color, fg: Color, accent: Color, dark: Boolean, setDark: (Boolean)->Unit) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val connectionStatus by DirectBydAdbManager.status
+    val diagnosticDetails by DirectBydAdbManager.details
+
     Panel(card) {
-        Text("Vehicle data connection", color = fg, fontWeight = FontWeight.SemiBold, fontSize = 19.sp)
-        Text("Direct BYD head-unit access is the current development priority. The MQTT receiver setup is temporarily hidden while we test the vehicle's built-in data services.", color = fg.copy(alpha=.7f))
+        Text("Direct BYD connection", color = fg, fontWeight = FontWeight.SemiBold, fontSize = 19.sp)
+        Text("TidalVolt is preparing a local ADB connection to the vehicle's own Android debugging service. No MQTT broker, OverDrive connection, cloud server or external phone is used.", color = fg.copy(alpha=.7f))
+        Spacer(Modifier.height(10.dp))
+        Text("Connection status: $connectionStatus", color = accent, fontWeight = FontWeight.SemiBold)
+        if (diagnosticDetails.isNotBlank()) {
+            Spacer(Modifier.height(6.dp))
+            Text(diagnosticDetails, color = fg.copy(alpha=.7f), fontSize = 12.sp)
+        }
+        Spacer(Modifier.height(12.dp))
+        Button(
+            onClick = { DirectBydAdbManager.runDiagnostics(context) },
+            enabled = connectionStatus != "Checking local ADB…",
+            modifier = Modifier.fillMaxWidth()
+        ) { Text(if (connectionStatus == "Checking local ADB…") "Checking…" else "Check head-unit connection") }
+        Text("First connection may show an Android debugging authorization prompt. Select Always allow from this computer, then tap Allow. This phase runs read-only identity and firmware checks; it does not query or control vehicle systems.", color = fg.copy(alpha=.6f), fontSize = 11.sp)
     }
     Spacer(Modifier.height(12.dp))
     Panel(card) {
@@ -441,49 +458,9 @@ private fun MoreScreen(card: Color, fg: Color, accent: Color, dark: Boolean, set
     }
     Spacer(Modifier.height(12.dp))
     Panel(card) {
-        Text("About TidalVolt", color = fg, fontWeight = FontWeight.SemiBold)
-        Text("Version 1.0.0 • Android foundation", color = fg.copy(alpha=.7f))
+        Text("About TidalVolt", color = fg, fontWeight = FontWeight.SemiBold, fontSize = 19.sp)
+        Text("Version 1.1.0 • Direct BYD connector development", color = fg.copy(alpha=.7f))
         Text("Designed for BYD vehicles first, with room to expand to other EV brands.", color = fg.copy(alpha=.7f))
-    }
-}
-
-@Composable
-private fun MqttSettingsPanel(card: Color, fg: Color, accent: Color) {
-    val context = androidx.compose.ui.platform.LocalContext.current
-    val prefs = remember { context.getSharedPreferences("tidalvolt_mqtt", Context.MODE_PRIVATE) }
-    var host by remember { mutableStateOf(prefs.getString("host", "") ?: "") }
-    var port by remember { mutableStateOf(prefs.getString("port", "8883") ?: "8883") }
-    var topic by remember { mutableStateOf(prefs.getString("topic", "overdrive/vehicle/telemetry") ?: "overdrive/vehicle/telemetry") }
-    var username by remember { mutableStateOf(prefs.getString("username", "") ?: "") }
-    var password by remember { mutableStateOf(prefs.getString("password", "") ?: "") }
-    var showPassword by remember { mutableStateOf(false) }
-    val connectionStatus by MqttTelemetryManager.status
-
-    Panel(card) {
-        Text("Integrations", color = fg, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-        Spacer(Modifier.height(6.dp))
-        Text("OverDrive / BYD Trip Stats • MQTT telemetry", color = accent, fontWeight = FontWeight.SemiBold)
-        Text("Connect TidalVolt to OverDrive's live vehicle telemetry or BYD Trip Stats. TidalVolt only subscribes; it never sends vehicle commands.", color = fg.copy(alpha=.7f))
-        Spacer(Modifier.height(10.dp))
-        OutlinedTextField(value = host, onValueChange = { host = it }, label = { Text("MQTT broker hostname") }, placeholder = { Text("Broker hostname or Tailscale IP") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(value = port, onValueChange = { port = it.filter(Char::isDigit).take(5) }, label = { Text("Broker port") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(value = topic, onValueChange = { topic = it }, label = { Text("Telemetry topic") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(value = username, onValueChange = { username = it }, label = { Text("Broker username") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(value = password, onValueChange = { password = it }, label = { Text("Broker password") }, singleLine = true, visualTransformation = if (showPassword) androidx.compose.ui.text.input.VisualTransformation.None else PasswordVisualTransformation(), trailingIcon = { TextButton(onClick = { showPassword = !showPassword }) { Text(if (showPassword) "Hide" else "Show") } }, modifier = Modifier.fillMaxWidth())
-        Spacer(Modifier.height(8.dp))
-        Text("OVERDRIVE SETUP: Open OverDrive → MQTT → Add Connection. Use this same broker, credentials and topic: overdrive/vehicle/telemetry. Select Aggregate mode by leaving Home Assistant discovery OFF, and keep Allow vehicle control OFF. Set the publish interval to 5–10 seconds while driving and a slower heartbeat when parked. Enable OverDrive's Tailscale proxy if the broker is reachable through your tailnet. Port 8883 uses TLS; 1883 is unencrypted.", color = fg.copy(alpha=.6f), fontSize = 11.sp)
-        Spacer(Modifier.height(8.dp))
-        Button(
-            onClick = {
-                prefs.edit().putString("host", host.trim()).putString("port", port.trim()).putString("topic", topic.trim()).putString("username", username.trim()).putString("password", password).apply()
-                MqttTelemetryManager.connect(host.trim(), port.toIntOrNull() ?: 8883, topic.trim(), username.trim(), password)
-            },
-            enabled = host.isNotBlank() && topic.isNotBlank() && (port.toIntOrNull() ?: 0) in 1..65535,
-            modifier = Modifier.fillMaxWidth()
-        ) { Text("Save and connect") }
-        OutlinedButton(onClick = { MqttTelemetryManager.disconnect() }, modifier = Modifier.fillMaxWidth()) { Text("Disconnect") }
-        Text("Status: $connectionStatus", color = if (connectionStatus == "Connected") accent else fg.copy(alpha=.7f), fontWeight = FontWeight.SemiBold)
-        Text("For BYD Trip Stats, select its state topic instead (for example byd-trip-stats/yuanpro/state). Live telemetry is not shown until a valid JSON message arrives. Credentials are stored locally on this device. Keep OverDrive vehicle-control publishing disabled; TidalVolt is read-only.", color = fg.copy(alpha=.55f), fontSize = 11.sp)
     }
 }
 
