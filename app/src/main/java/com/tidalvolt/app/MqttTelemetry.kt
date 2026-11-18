@@ -116,6 +116,7 @@ object TelemetryStore {
     private const val LATEST_TIME_KEY = "latest_saved_at"
     private const val MAX_SNAPSHOTS = 2000
     @Volatile private var appContext: android.content.Context? = null
+    private val mainHandler = Handler(Looper.getMainLooper())
 
     fun initialize(context: android.content.Context) {
         val app = context.applicationContext
