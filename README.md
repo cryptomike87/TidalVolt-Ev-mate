@@ -46,6 +46,15 @@ The receiver currently runs while the TidalVolt app process is alive. A foregrou
 - Daily-report notification scheduling is not yet implemented.
 - Trip detection is provisional and must be validated against real OverDrive update cadence before being relied on.
 
+## Android home-screen widgets
+
+TidalVolt includes three resizable Android home-screen widgets:
+- Battery: state of charge, estimated range and last update time.
+- Charging: charging state, battery level, charging power and estimated time to full.
+- Vehicle overview: battery, range, speed and charging state.
+
+Widgets refresh whenever a new OverDrive telemetry packet is received. They display unavailable values as unavailable rather than inventing readings. Tap a widget to open TidalVolt. Add them from the Android launcher widget picker.
+
 ## Local history
 
 Incoming telemetry samples are stored locally on the phone (up to 5,000 recent samples in the current implementation). The app will retain history while the vehicle is disconnected. Trip segmentation and automated charging-session lifecycle will be enabled after the incoming OverDrive fields and update cadence are validated.
