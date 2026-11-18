@@ -53,6 +53,112 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+
+private data class WeatherSnapshot(
+    val temperature: Double, val apparent: Double?, val humidity: Int?,
+    val wind: Double?, val precipitation: Double?, val code: Int,
+    val hourlyTimes: List<String>, val hourlyTemps: List<Double>
+)
+
+private fun fetchWeather(lat: Double, lon: Double): WeatherSnapshot {
+    val url = java.net.URL("https://api.open-meteo.com/v1/forecast?latitude=$lat&longitude=$lon&current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,weather_code,wind_speed_10m&hourly=temperature_2m,precipitation_probability&forecast_days=1&timezone=auto")
+    val connection = (url.openConnection() as java.net.HttpURLConnection).apply {
+        connectTimeout = 12000
+        readTimeout = 12000
+        requestMethod = "GET"
+    }
+    try {
+        val root = org.json.JSONObject(connection.inputStream.bufferedReader().use { it.readText() })
+        val current = root.getJSONObject("current")
+        val hourly = root.getJSONObject("hourly")
+        val times = hourly.getJSONArray("time")
+        val temps = hourly.getJSONArray("temperature_2m")
+        val labels = mutableListOf<String>()
+        val values = mutableListOf<Double>()
+        for (i in 0 until minOf(times.length(), temps.length(), 12)) {
+            labels.add(times.getString(i).substringAfter("T"))
+            values.add(temps.getDouble(i))
+        }
+        return WeatherSnapshot(
+            current.getDouble("temperature_2m"),
+            current.optDouble("apparent_temperature").takeIf { it.isFinite() },
+            current.optInt("relative_humidity_2m").takeIf { current.has("relative_humidity_2m") },
+            current.optDouble("wind_speed_10m").takeIf { it.isFinite() },
+            current.optDouble("precipitation").takeIf { it.isFinite() },
+            current.optInt("weather_code", -1), labels, values
+        )
+    } finally { connection.disconnect() }
+}
+
+private fun weatherDescription(code: Int): String = when (code) {
+    0 -> "Clear sky"; 1 -> "Mainly clear"; 2 -> "Partly cloudy"; 3 -> "Overcast"
+    45, 48 -> "Fog"; 51, 53, 55 -> "Drizzle"; 56, 57 -> "Freezing drizzle"
+    61, 63, 65 -> "Rain"; 66, 67 -> "Freezing rain"; 71, 73, 75, 77 -> "Snow"
+    80, 81, 82 -> "Rain showers"; 85, 86 -> "Snow showers"
+    95 -> "Thunderstorm"; 96, 99 -> "Thunderstorm with hail"
+    else -> "Conditions unavailable"
+}
+
+@Composable
+private fun WeatherScreen(card: Color, fg: Color, accent: Color) {
+    var weather by remember { mutableStateOf<WeatherSnapshot?>(null) }
+    var loading by remember { mutableStateOf(true) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var refreshedAt by remember { mutableStateOf("") }
+    LaunchedEffect(Unit) {
+        while (true) {
+            loading = weather == null
+            try {
+                val result = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    fetchWeather(25.0443, -77.3504)
+                }
+                weather = result
+                error = null
+                refreshedAt = SimpleDateFormat("h:mm a", Locale.getDefault()).format(Date())
+            } catch (e: Exception) {
+                error = e.message ?: "Unable to retrieve weather"
+            }
+            loading = false
+            kotlinx.coroutines.delay(15 * 60 * 1000L)
+        }
+    }
+    Panel(card) {
+        Text("Weather • Nassau, Bahamas", color=fg, fontSize=19.sp, fontWeight=FontWeight.SemiBold)
+        if (loading && weather == null) {
+            CircularProgressIndicator(color=accent)
+            Text("Loading current conditions…", color=fg.copy(alpha=.7f))
+        } else if (weather != null) {
+            val w = weather!!
+            Text("${w.temperature.toInt()}°", color=accent, fontSize=56.sp, fontWeight=FontWeight.Bold)
+            Text(weatherDescription(w.code), color=fg, fontSize=20.sp, fontWeight=FontWeight.SemiBold)
+            Text("Feels like ${w.apparent?.let { "${it.toInt()}°" } ?: "—"}", color=fg.copy(alpha=.7f))
+            Spacer(Modifier.height(12.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement=Arrangement.SpaceBetween) {
+                Column { Text("Humidity", color=fg.copy(alpha=.6f), fontSize=12.sp); Text(w.humidity?.let { "$it%" } ?: "—", color=fg, fontWeight=FontWeight.Bold) }
+                Column { Text("Wind", color=fg.copy(alpha=.6f), fontSize=12.sp); Text(w.wind?.let { "%.0f km/h".format(it) } ?: "—", color=fg, fontWeight=FontWeight.Bold) }
+                Column { Text("Rain", color=fg.copy(alpha=.6f), fontSize=12.sp); Text(w.precipitation?.let { "%.1f mm".format(it) } ?: "—", color=fg, fontWeight=FontWeight.Bold) }
+            }
+            Spacer(Modifier.height(12.dp))
+            Text("Updated $refreshedAt • refreshes every 15 minutes", color=fg.copy(alpha=.55f), fontSize=11.sp)
+        }
+        error?.let { Text("Weather update failed: $it", color=MaterialTheme.colorScheme.error, fontSize=12.sp) }
+    }
+    Spacer(Modifier.height(12.dp))
+    Panel(card) {
+        Text("Hourly forecast", color=fg, fontSize=18.sp, fontWeight=FontWeight.SemiBold)
+        val w = weather
+        if (w == null) Text("Forecast unavailable until weather data loads.", color=fg.copy(alpha=.7f))
+        else w.hourlyTimes.indices.forEach { i ->
+            Row(Modifier.fillMaxWidth().padding(vertical=6.dp), horizontalArrangement=Arrangement.SpaceBetween) {
+                Text(w.hourlyTimes[i], color=fg.copy(alpha=.7f))
+                Text("${w.hourlyTemps[i].toInt()}°", color=fg, fontWeight=FontWeight.SemiBold)
+            }
+            HorizontalDivider()
+        }
+    }
+    Text("Weather data: Open-Meteo • Forecast only; not a vehicle sensor.", color=fg.copy(alpha=.55f), fontSize=10.sp)
+}
+
 @Composable
 fun TidalVoltApp() {
     var dark by remember { mutableStateOf(false) }
@@ -65,9 +171,9 @@ fun TidalVoltApp() {
     MaterialTheme(colorScheme = if (dark) darkColorScheme(primary = accent, background = bg, surface = card, onSurface = fg) else lightColorScheme(primary = accent, background = bg, surface = card, onSurface = fg)) {
         Scaffold(containerColor = bg, bottomBar = {
             NavigationBar(containerColor = card) {
-                listOf("Vehicle", "Energy", "Stats", "Tools", "More").forEach { item ->
+                listOf("Vehicle", "Energy", "Stats", "Weather", "Tools", "More").forEach { item ->
                     NavigationBarItem(selected = tab == item, onClick = { tab = item },
-                        icon = { Icon(when(item) { "Vehicle" -> Icons.Default.DirectionsCar; "Energy" -> Icons.Default.Bolt; "Stats" -> Icons.Default.QueryStats; "Tools" -> Icons.Default.Build; else -> Icons.Default.Settings }, contentDescription = item) },
+                        icon = { Icon(when(item) { "Vehicle" -> Icons.Default.DirectionsCar; "Energy" -> Icons.Default.Bolt; "Stats" -> Icons.Default.QueryStats; "Tools" -> Icons.Default.Build; "Weather" -> Icons.Default.Cloud; else -> Icons.Default.Settings }, contentDescription = item) },
                         label = { Text(item) })
                 }
             }
@@ -81,6 +187,7 @@ fun TidalVoltApp() {
                     "Vehicle" -> VehicleScreen(card, fg, accent)
                     "Energy" -> ChargeScreen(card, fg, accent)
                     "Stats" -> StatsScreen(card, fg, accent)
+                    "Weather" -> WeatherScreen(card, fg, accent)
                     "Tools" -> FeatureHubScreen(card, fg, accent)
                     else -> MoreScreen(card, fg, accent, dark) { dark = it }
                 }
