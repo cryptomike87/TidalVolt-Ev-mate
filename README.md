@@ -12,7 +12,7 @@ A phone-first EV companion for BYD vehicles, with a clean Tesla-inspired / Apple
 
 ## OverDrive connection
 
-TidalVolt hosts a local WebSocket receiver on the phone (port 8765). Connect the phone and BYD head unit to the same Wi-Fi network or phone hotspot, start the receiver in More → OverDrive connection, and copy the displayed WebSocket address into the OverDrive sender configuration.
+TidalVolt hosts a token-protected WebSocket receiver on the phone (port 8765). For remote access across different networks, install Tailscale on both the phone and BYD head unit, sign both devices into the same Tailscale account/tailnet, and leave Tailscale connected. Start the receiver in More → OverDrive connection. When Tailscale is active on the phone, TidalVolt detects its 100.64.0.0/10 address and displays a remote WebSocket URL; copy that exact URL into OverDrive's sender configuration. The receiver binds to all phone interfaces so the Tailscale VPN interface can reach it. If Tailscale is not connected, the app may show a local-network address, which will not work across separate networks.
 
 The receiver accepts either a flat JSON telemetry object or an object containing a nested telemetry object. The initial normalized fields include:
 
@@ -35,7 +35,20 @@ The phone generates a pairing token and includes it in the WebSocket URL. The se
 
 The phone receiver and JSON parser are implemented, but the OverDrive sender interface and exact outgoing payload have not yet been verified on the user's BYD head unit. Do not treat sample or unavailable fields as live readings. A live connection is confirmed only after the app receives and displays actual vehicle packets.
 
-The receiver currently runs while the TidalVolt app process is alive. A foreground service / reconnect lifecycle is a later hardening step before relying on unattended collection.
+The receiver currently runs while the TidalVolt app process is alive. Keep TidalVolt open during the first remote-connection test. A foreground service and automatic reconnect lifecycle are still required before relying on unattended background collection; Android may stop an ordinary app process.
+
+### Tailscale setup
+
+1. Install the official Tailscale Android app on the phone and the BYD head unit (Android 8.0 or newer is supported).
+2. Sign in on both devices using the same identity provider/account so they join the same tailnet.
+3. Approve both devices in the Tailscale admin console if prompted, then confirm both show connected.
+4. On the phone, open TidalVolt → More → OverDrive connection → Start phone receiver.
+5. Copy the `ws://100.x.y.z:8765/tidalvolt?token=...` address shown by TidalVolt into OverDrive's WebSocket sender. Use the actual address shown in the app; do not copy an example address.
+6. Keep Tailscale enabled on both devices. The head unit must have internet access and remain awake/online to send live data.
+
+Official installation instructions: https://tailscale.com/docs/install/android. For manual APK installation, use the official stable Android package page: https://dl.tailscale.com/stable/.
+
+Tailscale provides the private encrypted network; it does not collect vehicle data itself. OverDrive remains the data sender, and TidalVolt remains a read-only receiver. No MQTT broker, public port forwarding, or public WebSocket endpoint is needed.
 
 ## Parking and activity tracking
 
