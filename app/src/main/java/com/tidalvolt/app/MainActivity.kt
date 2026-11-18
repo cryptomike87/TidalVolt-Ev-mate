@@ -215,6 +215,9 @@ private fun Panel(card: Color, content: @Composable ColumnScope.() -> Unit) {
 @Composable
 private fun VehicleScreen(card: Color, fg: Color, accent: Color) {
     val telemetry by TelemetryStore.latest
+    val savedAt by TelemetryStore.lastSavedAt
+    val savedCount by TelemetryStore.historyCount
+    val recent = remember(savedCount) { TelemetryStore.recentSnapshots(12) }
     Panel(card) {
         Text("2026 BYD Yuan Pro", color = fg, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
         Text("Live vehicle overview", color = fg.copy(alpha=.65f))
@@ -265,8 +268,6 @@ private fun VehicleScreen(card: Color, fg: Color, accent: Color) {
         Text("Vehicle connection", color = fg, fontWeight = FontWeight.SemiBold)
         Text(if (telemetry != null) "Receiving live vehicle data from OverDrive. Confirm readings against the vehicle display during initial testing." else "Direct BYD head-unit connection is being prepared. No external receiver is required for the planned approach.", color = fg.copy(alpha=.7f))
         Text("Connection: ${MqttTelemetryManager.status.value}", color = accent, fontSize = 12.sp)
-        val savedAt by TelemetryStore.lastSavedAt
-        val savedCount by TelemetryStore.historyCount
         Text(
             if (savedAt > 0L) "Saved on this phone • ${SimpleDateFormat("MMM d, h:mm a", Locale.getDefault()).format(Date(savedAt))}"
             else "No vehicle snapshots saved yet",
@@ -278,7 +279,7 @@ private fun VehicleScreen(card: Color, fg: Color, accent: Color) {
         Spacer(Modifier.height(12.dp))
         Panel(card) {
             Text("Recent saved vehicle readings", color = fg, fontWeight = FontWeight.SemiBold)
-            TelemetryStore.recentSnapshots(12).forEach { snapshot ->
+            recent.forEach { snapshot ->
                 val time = SimpleDateFormat("MMM d • h:mm a", Locale.getDefault()).format(Date(snapshot.receivedAtMillis))
                 Row(Modifier.fillMaxWidth().padding(vertical=6.dp), horizontalArrangement = Arrangement.SpaceBetween) {
                     Text(time, color=fg.copy(alpha=.65f), fontSize=11.sp)
