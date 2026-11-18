@@ -156,10 +156,10 @@ private fun featurePrefs(c:Context)=c.getSharedPreferences("tidalvolt_feature_hu
 }
 @Composable private fun EfficiencyTool(card:Color,fg:Color,accent:Color) {
     var consumption by remember{mutableStateOf("20")}
-    val c=consumption.toDoubleOrNull();val score=if(c!=null&&c>0)(100-(c-14)*3).toInt().coerceIn(0,100) else null
+    val c=consumption.toDoubleOrNull();val n=c?:0.0;val score=if(c!=null&&c>0)(100-(c-14)*3).toInt().coerceIn(0,100) else null
     ToolPanel(card) {
         ToolField("Average consumption (kWh/100 mi)",consumption){consumption=it}
-        if(score!=null){ToolMetric("Indicative efficiency score","$score / 100",fg,accent);ToolMetric("Consumption rating",when{c!!<=16->"Excellent";c<=20.0->"Good";c<=24.0->"Moderate";else->"High"},fg,accent)}
+        if(score!=null){ToolMetric("Indicative efficiency score","$score / 100",fg,accent);ToolMetric("Consumption rating",when{n<=16->"Excellent";n<=20->"Good";n<=24->"Moderate";else->"High"},fg,accent)}
         Text("Indicative comparison score, not a measured driver grade. Live trip and regenerative-braking data depend on telemetry support.",color=fg.copy(alpha=.6f),fontSize=11.sp)
     }
 }
