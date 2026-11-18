@@ -17,7 +17,7 @@ import java.util.concurrent.atomic.AtomicBoolean
  * The phone hosts this endpoint; OverDrive on the head unit connects as a WebSocket client.
  */
 object TelemetryReceiverServer {
-    private const val PORT = 8765
+    private const val DEFAULT_PORT = 8765
     private const val PREFS = "tidalvolt_receiver"
     private var server: WebSocketServer? = null
     private var pairingToken: String = ""
@@ -34,17 +34,29 @@ object TelemetryReceiverServer {
         pairingToken = prefs.getString("pairing_token", null) ?: UUID.randomUUID().toString().replace("-", "").take(16).also {
             prefs.edit().putString("pairing_token", it).apply()
         }
-        val tailscaleAddress = discoverTailscaleIpv4()
+        val configuredPort = prefs.getInt("receiver_port", DEFAULT_PORT).coerceIn(1024, 65535)
+        val networkMode = prefs.getString("network_mode", "auto") ?: "auto"
+        val manualTailscaleIp = prefs.getString("tailscale_ip", "").orEmpty().trim()
+        val discoveredTailscaleIp = discoverTailscaleIpv4()
+        val tailscaleAddress = manualTailscaleIp.takeIf { isTailscaleIpv4(it) } ?: discoveredTailscaleIp
         val localAddress = discoverLocalIpv4()
-        val address = tailscaleAddress ?: localAddress
-        endpoint.value = when {
-            tailscaleAddress != null -> "ws://$tailscaleAddress:$PORT/tidalvolt?token=$pairingToken"
-            localAddress != null -> "ws://$localAddress:$PORT/tidalvolt?token=$pairingToken"
-            else -> "Tailscale not connected — enable Tailscale on this phone"
+        val address = when (networkMode) {
+            "tailscale" -> tailscaleAddress
+            "local" -> localAddress
+            else -> tailscaleAddress ?: localAddress
+        }
+        endpoint.value = if (address != null) {
+            "ws://$address:$configuredPort/tidalvolt?token=$pairingToken"
+        } else {
+            when (networkMode) {
+                "tailscale" -> "Tailscale IP unavailable — connect Tailscale or enter its 100.x IP"
+                "local" -> "No local Wi-Fi address found"
+                else -> "No network address found — connect Tailscale or local Wi-Fi"
+            }
         }
         status.value = "Starting receiver…"
 
-        val instance = object : WebSocketServer(InetSocketAddress("0.0.0.0", PORT)) {
+        val instance = object : WebSocketServer(InetSocketAddress("0.0.0.0", configuredPort)) {
             override fun onOpen(conn: WebSocket, handshake: ClientHandshake) {
                 val expected = "/tidalvolt?token=$pairingToken"
                 if (handshake.resourceDescriptor != expected) {
@@ -80,10 +92,11 @@ object TelemetryReceiverServer {
 
             override fun onStart() {
                 running.set(true)
-                status.value = if (tailscaleAddress != null) {
-                    "Waiting for OverDrive • Tailscale ready"
-                } else {
-                    "Waiting for OverDrive • local network only"
+                status.value = when {
+                    address == null -> "Receiver running • address unavailable"
+                    networkMode == "tailscale" || (networkMode == "auto" && address == tailscaleAddress) ->
+                        "Waiting for OverDrive • Tailscale • port $configuredPort"
+                    else -> "Waiting for OverDrive • local network • port $configuredPort"
                 }
             }
         }
@@ -106,6 +119,12 @@ object TelemetryReceiverServer {
     }
 
     fun isRunning(): Boolean = running.get()
+
+    private fun isTailscaleIpv4(value: String): Boolean {
+        val parts = value.split(".").mapNotNull { it.toIntOrNull() }
+        return parts.size == 4 && parts[0] == 100 && parts[1] in 64..127 &&
+            parts.all { it in 0..255 }
+    }
 
     /** Tailscale IPv4 addresses are allocated from 100.64.0.0/10. */
     private fun discoverTailscaleIpv4(): String? {
