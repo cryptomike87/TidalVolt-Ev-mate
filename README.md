@@ -12,7 +12,7 @@ A phone-first EV companion for BYD vehicles, with a clean Tesla-inspired / Apple
 
 ## OverDrive connection
 
-TidalVolt hosts a token-protected WebSocket receiver on the phone (port 8765). For remote access across different networks, install Tailscale on both the phone and BYD head unit, sign both devices into the same Tailscale account/tailnet, and leave Tailscale connected. Start the receiver in More → OverDrive connection. When Tailscale is active on the phone, TidalVolt detects its 100.64.0.0/10 address and displays a remote WebSocket URL; copy that exact URL into OverDrive's sender configuration. The receiver binds to all phone interfaces so the Tailscale VPN interface can reach it. If Tailscale is not connected, the app may show a local-network address, which will not work across separate networks.
+TidalVolt hosts a token-protected WebSocket receiver on the phone (port 8765). For remote access across different networks, install Tailscale on both the phone and BYD head unit, sign both devices into the same Tailscale account/tailnet, and leave Tailscale connected. In More → Connection Settings, choose Automatic (Tailscale preferred), Tailscale only, or Local network only. The default listening port is 8765 and can be changed to any port from 1024 to 65535. An optional manual Tailscale IP override is available if automatic interface detection does not find the phone's address. Save and apply the settings, then start the receiver in More → OverDrive connection. TidalVolt detects its 100.64.0.0/10 address when possible and displays the configured WebSocket URL; copy that exact URL into OverDrive's sender configuration. The receiver binds to all phone interfaces so the Tailscale VPN interface can reach it.
 
 The receiver accepts either a flat JSON telemetry object or an object containing a nested telemetry object. The initial normalized fields include:
 
@@ -43,7 +43,7 @@ The receiver currently runs while the TidalVolt app process is alive. Keep Tidal
 2. Sign in on both devices using the same identity provider/account so they join the same tailnet.
 3. Approve both devices in the Tailscale admin console if prompted, then confirm both show connected.
 4. On the phone, open TidalVolt → More → OverDrive connection → Start phone receiver.
-5. Copy the `ws://100.x.y.z:8765/tidalvolt?token=...` address shown by TidalVolt into OverDrive's WebSocket sender. Use the actual address shown in the app; do not copy an example address.
+5. In TidalVolt → More → Connection Settings, select Automatic or Tailscale only and confirm the listening port (default 8765). Save settings, start the receiver, and copy the exact WebSocket address shown into OverDrive's sender. Use the actual address shown in the app; do not copy an example address.
 6. Keep Tailscale enabled on both devices. The head unit must have internet access and remain awake/online to send live data.
 
 Official installation instructions: https://tailscale.com/docs/install/android. For manual APK installation, use the official stable Android package page: https://dl.tailscale.com/stable/.
