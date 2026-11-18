@@ -395,6 +395,84 @@ private fun MoreScreen(card: Color, fg: Color, accent: Color, dark: Boolean, set
     val receiverConnected by TelemetryReceiverServer.connected
     var receiverStarted by remember { mutableStateOf(TelemetryReceiverServer.isRunning()) }
     val telemetry by TelemetryStore.latest
+    val connectionPrefs = remember { context.getSharedPreferences("tidalvolt_receiver", Context.MODE_PRIVATE) }
+    var networkMode by remember { mutableStateOf(connectionPrefs.getString("network_mode", "auto") ?: "auto") }
+    var receiverPort by remember { mutableStateOf(connectionPrefs.getInt("receiver_port", 8765).toString()) }
+    var tailscaleIp by remember { mutableStateOf(connectionPrefs.getString("tailscale_ip", "") ?: "") }
+    var modeMenuExpanded by remember { mutableStateOf(false) }
+    var settingsMessage by remember { mutableStateOf("") }
+
+    Panel(card) {
+        Text("Connection Settings", color = fg, fontWeight = FontWeight.SemiBold, fontSize = 19.sp)
+        Text("Choose how OverDrive reaches this phone. Automatic prefers Tailscale and falls back to the local network.", color = fg.copy(alpha=.7f), fontSize = 12.sp)
+        Spacer(Modifier.height(10.dp))
+        Text("Network mode", color = fg.copy(alpha=.7f), fontSize = 12.sp)
+        Box {
+            OutlinedButton(onClick = { modeMenuExpanded = true }, modifier = Modifier.fillMaxWidth()) {
+                Text(when (networkMode) {
+                    "tailscale" -> "Tailscale only"
+                    "local" -> "Local network only"
+                    else -> "Automatic (Tailscale preferred)"
+                })
+            }
+            DropdownMenu(expanded = modeMenuExpanded, onDismissRequest = { modeMenuExpanded = false }) {
+                DropdownMenuItem(text = { Text("Automatic (Tailscale preferred)") }, onClick = { networkMode = "auto"; modeMenuExpanded = false })
+                DropdownMenuItem(text = { Text("Tailscale only") }, onClick = { networkMode = "tailscale"; modeMenuExpanded = false })
+                DropdownMenuItem(text = { Text("Local network only") }, onClick = { networkMode = "local"; modeMenuExpanded = false })
+            }
+        }
+        OutlinedTextField(
+            value = receiverPort,
+            onValueChange = { value -> if (value.length <= 5 && value.all { it.isDigit() }) receiverPort = value },
+            label = { Text("Local listening port") },
+            supportingText = { Text("Default 8765 • allowed range 1024–65535") },
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth()
+        )
+        OutlinedTextField(
+            value = tailscaleIp,
+            onValueChange = { tailscaleIp = it.trim() },
+            label = { Text("Tailscale IP override (optional)") },
+            placeholder = { Text("100.x.x.x") },
+            supportingText = { Text("Leave blank to detect this phone's Tailscale IP automatically.") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth()
+        )
+        Button(
+            onClick = {
+                val portValue = receiverPort.toIntOrNull()
+                val ipValue = tailscaleIp.trim()
+                val octets = ipValue.split(".").mapNotNull { it.toIntOrNull() }
+                val validIp = ipValue.isBlank() || (octets.size == 4 && octets[0] == 100 && octets[1] in 64..127 && octets.all { it in 0..255 })
+                if (portValue == null || portValue !in 1024..65535) {
+                    settingsMessage = "Enter a port between 1024 and 65535."
+                } else if (!validIp) {
+                    settingsMessage = "Enter a valid Tailscale IPv4 address in the 100.64.0.0/10 range, or leave it blank."
+                } else {
+                    val wasRunning = TelemetryReceiverServer.isRunning()
+                    connectionPrefs.edit()
+                        .putString("network_mode", networkMode)
+                        .putInt("receiver_port", portValue)
+                        .putString("tailscale_ip", ipValue)
+                        .apply()
+                    if (wasRunning) {
+                        TelemetryReceiverServer.stop()
+                        TelemetryReceiverServer.start(context)
+                        receiverStarted = true
+                        settingsMessage = "Settings saved. Receiver restarted on port $portValue."
+                    } else {
+                        settingsMessage = "Settings saved. Start the receiver to apply them."
+                    }
+                }
+            },
+            modifier = Modifier.fillMaxWidth()
+        ) { Text("Save and apply settings") }
+        if (settingsMessage.isNotBlank()) {
+            Text(settingsMessage, color = accent, fontSize = 12.sp)
+        }
+    }
+    Spacer(Modifier.height(12.dp))
 
     Panel(card) {
         Text("OverDrive connection", color = fg, fontWeight = FontWeight.SemiBold, fontSize = 19.sp)
