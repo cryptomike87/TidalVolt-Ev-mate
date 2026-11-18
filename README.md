@@ -37,6 +37,14 @@ The phone receiver and JSON parser are implemented, but the OverDrive sender int
 
 The receiver currently runs while the TidalVolt app process is alive. A foreground service / reconnect lifecycle is a later hardening step before relying on unattended collection.
 
+## Parking and activity tracking
+
+Parking time remains part of the product. TidalVolt will use OverDrive's existing parking state/timer data rather than introducing a separate location or motion-tracking dependency. The current activity screen is a placeholder; the exact OverDrive parking payload field still needs to be confirmed on the head unit before completed parking durations can be recorded reliably.
+
+## Charging costs and comparison
+
+The charging estimator automatically includes a 5% charging-loss allowance (95% charging efficiency) and displays the energy stored in the battery, estimated loss, energy drawn from the charger and estimated cost. EV-versus-petrol comparisons are retained and include the same charging-loss allowance in EV energy costs.
+
 ## Android notifications
 
 - No WhatsApp integration, phone number, Business API, MQTT broker or paid messaging service.
