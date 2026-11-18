@@ -66,9 +66,9 @@ fun TidalVoltApp() {
     MaterialTheme(colorScheme = if (dark) darkColorScheme(primary = accent, background = bg, surface = card, onSurface = fg) else lightColorScheme(primary = accent, background = bg, surface = card, onSurface = fg)) {
         Scaffold(containerColor = bg, bottomBar = {
             if (!(tab == "Map" && mapFullscreen)) NavigationBar(containerColor = card) {
-                listOf("Vehicle", "Map", "Energy", "Stats", "More").forEach { item ->
+                listOf("Vehicle", "Map", "Energy", "Stats", "Tools", "More").forEach { item ->
                     NavigationBarItem(selected = tab == item, onClick = { tab = item },
-                        icon = { Icon(when(item) { "Vehicle" -> Icons.Default.DirectionsCar; "Map" -> Icons.Default.Map; "Energy" -> Icons.Default.Bolt; "Stats" -> Icons.Default.QueryStats; else -> Icons.Default.Settings }, contentDescription = item) },
+                        icon = { Icon(when(item) { "Vehicle" -> Icons.Default.DirectionsCar; "Map" -> Icons.Default.Map; "Energy" -> Icons.Default.Bolt; "Stats" -> Icons.Default.QueryStats; "Tools" -> Icons.Default.Build; else -> Icons.Default.Settings }, contentDescription = item) },
                         label = { Text(item) })
                 }
             }
@@ -85,6 +85,7 @@ fun TidalVoltApp() {
                         "Vehicle" -> VehicleScreen(card, fg, accent)
                         "Energy" -> ChargeScreen(card, fg, accent)
                         "Stats" -> StatsScreen(card, fg, accent)
+                        "Tools" -> FeatureHubScreen(card, fg, accent)
                         else -> MoreScreen(card, fg, accent, dark) { dark = it }
                     }
                 }
