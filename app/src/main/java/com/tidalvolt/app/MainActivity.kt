@@ -49,6 +49,7 @@ private val Sage = Color(0xFFA8B99A)
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        TelemetryStore.initialize(this)
         setContent { TidalVoltApp() }
     }
 }
@@ -264,6 +265,28 @@ private fun VehicleScreen(card: Color, fg: Color, accent: Color) {
         Text("Vehicle connection", color = fg, fontWeight = FontWeight.SemiBold)
         Text(if (telemetry != null) "Receiving live vehicle data from OverDrive. Confirm readings against the vehicle display during initial testing." else "Direct BYD head-unit connection is being prepared. No external receiver is required for the planned approach.", color = fg.copy(alpha=.7f))
         Text("Connection: ${MqttTelemetryManager.status.value}", color = accent, fontSize = 12.sp)
+        val savedAt by TelemetryStore.lastSavedAt
+        val savedCount by TelemetryStore.historyCount
+        Text(
+            if (savedAt > 0L) "Saved on this phone • ${SimpleDateFormat("MMM d, h:mm a", Locale.getDefault()).format(Date(savedAt))}"
+            else "No vehicle snapshots saved yet",
+            color = fg.copy(alpha=.7f), fontSize = 12.sp
+        )
+        Text("Offline archive: $savedCount saved snapshots (latest data remains visible without a network connection).", color = fg.copy(alpha=.7f), fontSize = 11.sp)
+    }
+    if (savedCount > 0) {
+        Spacer(Modifier.height(12.dp))
+        Panel(card) {
+            Text("Recent saved vehicle readings", color = fg, fontWeight = FontWeight.SemiBold)
+            TelemetryStore.recentSnapshots(12).forEach { snapshot ->
+                val time = SimpleDateFormat("MMM d • h:mm a", Locale.getDefault()).format(Date(snapshot.receivedAtMillis))
+                Row(Modifier.fillMaxWidth().padding(vertical=6.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text(time, color=fg.copy(alpha=.65f), fontSize=11.sp)
+                    Text(snapshot.soc?.let { "${it.toInt()}% • ${snapshot.rangeMiles?.toInt() ?: 0} mi" } ?: "Vehicle update", color=fg, fontWeight=FontWeight.SemiBold, fontSize=12.sp)
+                }
+                HorizontalDivider()
+            }
+        }
     }
 }
 
