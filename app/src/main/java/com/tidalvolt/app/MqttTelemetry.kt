@@ -1,21 +1,10 @@
 package com.tidalvolt.app
 
-import android.os.Handler
-import android.os.Looper
 import androidx.compose.runtime.mutableStateOf
-import org.eclipse.paho.client.mqttv3.IMqttActionListener
-import org.eclipse.paho.client.mqttv3.IMqttToken
-import org.eclipse.paho.client.mqttv3.MqttAsyncClient
-import org.eclipse.paho.client.mqttv3.MqttCallbackExtended
-import org.eclipse.paho.client.mqttv3.MqttClient
-import org.eclipse.paho.client.mqttv3.MqttConnectOptions
-import org.eclipse.paho.client.mqttv3.MqttMessage
-import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence
 import org.json.JSONObject
 
 /**
- * Normalized, read-only vehicle telemetry from OverDrive or BYD Trip Stats.
- * Missing fields remain null. OverDrive's estimated SOH is kept distinct from OEM SOH.
+ * Normalized vehicle telemetry model. Missing fields remain null; estimated SOH stays distinct from OEM SOH.
  */
 data class EvTelemetry(
     val soc: Double? = null,
@@ -110,108 +99,3 @@ object TelemetryStore {
     val latest = mutableStateOf<EvTelemetry?>(null)
 }
 
-/**
- * Read-only MQTT subscriber. OverDrive publishes a complete JSON snapshot in
- * Aggregate mode; BYD Trip Stats can publish its documented state JSON topic too.
- */
-object MqttTelemetryManager {
-    val status = mutableStateOf("Not connected")
-    private val mainHandler = Handler(Looper.getMainLooper())
-    @Volatile private var mqttClient: MqttAsyncClient? = null
-
-    fun connect(host: String, port: Int, topic: String, username: String, password: String) {
-        disconnect(updateStatus = false)
-        val rawHost = host.trim()
-        val explicitScheme = when {
-            rawHost.startsWith("ssl://", ignoreCase = true) -> "ssl://"
-            rawHost.startsWith("tcp://", ignoreCase = true) -> "tcp://"
-            else -> null
-        }
-        val cleanHost = rawHost
-            .removePrefix("ssl://")
-            .removePrefix("SSL://")
-            .removePrefix("tcp://")
-            .removePrefix("TCP://")
-            .trimEnd('/')
-        if (cleanHost.isBlank() || topic.isBlank() || port !in 1..65535) {
-            setStatus("Invalid broker settings")
-            return
-        }
-        val scheme = explicitScheme ?: if (port == 8883) "ssl://" else "tcp://"
-        val uri = "$scheme$cleanHost:$port"
-        setStatus("Connecting…")
-        try {
-            val client = MqttAsyncClient(uri, MqttClient.generateClientId(), MemoryPersistence())
-            mqttClient = client
-            client.setCallback(object : MqttCallbackExtended {
-                override fun connectComplete(reconnect: Boolean, serverURI: String) {
-                    setStatus(if (reconnect) "Reconnected" else "Connected")
-                    try {
-                        client.subscribe(topic, 0, null, object : IMqttActionListener {
-                            override fun onSuccess(asyncActionToken: IMqttToken?) {
-                                setStatus("Connected • listening")
-                            }
-                            override fun onFailure(asyncActionToken: IMqttToken?, exception: Throwable?) {
-                                setStatus("Connected, but topic subscription failed")
-                            }
-                        })
-                    } catch (_: Exception) {
-                        setStatus("Connected, but topic subscription failed")
-                    }
-                }
-
-                override fun connectionLost(cause: Throwable?) {
-                    setStatus("Connection lost • reconnecting")
-                }
-
-                override fun messageArrived(receivedTopic: String, message: MqttMessage) {
-                    try {
-                        val parsed = EvTelemetry.fromJson(message.payload.toString(Charsets.UTF_8))
-                        mainHandler.post {
-                            TelemetryStore.latest.value = parsed
-                            setStatus("Connected • live data received")
-                        }
-                    } catch (_: Exception) {
-                        setStatus("Connected • received an unreadable telemetry message")
-                    }
-                }
-
-                override fun deliveryComplete(token: org.eclipse.paho.client.mqttv3.IMqttDeliveryToken?) = Unit
-            })
-            val options = MqttConnectOptions().apply {
-                isAutomaticReconnect = true
-                isCleanSession = true
-                connectionTimeout = 15
-                keepAliveInterval = 30
-                if (username.isNotBlank()) userName = username
-                if (password.isNotEmpty()) setPassword(password.toCharArray())
-            }
-            client.connect(options, null, object : IMqttActionListener {
-                override fun onSuccess(asyncActionToken: IMqttToken?) {
-                    setStatus("Connected")
-                }
-                override fun onFailure(asyncActionToken: IMqttToken?, exception: Throwable?) {
-                    setStatus("Connection failed: ${exception?.message ?: "check broker settings"}")
-                }
-            })
-        } catch (exception: Exception) {
-            setStatus("Connection failed: ${exception.message ?: "check broker settings"}")
-        }
-    }
-
-    fun disconnect(updateStatus: Boolean = true) {
-        val client = mqttClient
-        mqttClient = null
-        try {
-            if (client?.isConnected == true) client.disconnect()
-            client?.close()
-        } catch (_: Exception) {
-            // A disconnect during an in-flight connection is harmless.
-        }
-        if (updateStatus) setStatus("Disconnected")
-    }
-
-    private fun setStatus(value: String) {
-        mainHandler.post { status.value = value }
-    }
-}
