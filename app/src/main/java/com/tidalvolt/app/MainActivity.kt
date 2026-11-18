@@ -87,9 +87,15 @@ fun TidalVoltApp() {
             }
         }
     }
-
-    }
 }
+
+private data class ChargeRecord(
+    val timestamp: Long,
+    val from: Double,
+    val to: Double,
+    val kwh: Double,
+    val cost: Double
+)
 
 @Composable
 private fun Panel(card: Color, content: @Composable ColumnScope.() -> Unit) {
