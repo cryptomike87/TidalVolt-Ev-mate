@@ -139,7 +139,7 @@ private fun VehicleScreen(card: Color, fg: Color, accent: Color) {
     Spacer(Modifier.height(14.dp))
     Panel(card) {
         Text("Vehicle connection", color = fg, fontWeight = FontWeight.SemiBold)
-        Text(if (telemetry != null) "Receiving live vehicle data. Confirm readings against the vehicle display during initial testing." else "No live BYD telemetry has been received yet. Run the head-unit connection check in More.", color = fg.copy(alpha=.7f))
+        Text(if (telemetry != null) "Receiving live vehicle data. Confirm readings against the vehicle display during initial testing." else "No live BYD telemetry has been received yet. Start the phone receiver in More and connect OverDrive.", color = fg.copy(alpha=.7f))
     }
 }
 
@@ -330,6 +330,35 @@ private fun StatsScreen(card: Color, fg: Color, accent: Color) {
     Panel(card) {
         Text("Tracking requirements", color=fg, fontWeight=FontWeight.SemiBold)
         Text("Work and home time need saved locations. Driving and parked time need motion recognition. Red-light time needs a stop-detection model. TidalVolt will not invent activity totals.", color=fg.copy(alpha=.7f))
+    }
+    Spacer(Modifier.height(12.dp))
+    val samplePrefs = remember { context.getSharedPreferences("tidalvolt_telemetry_history", Context.MODE_PRIVATE) }
+    val samples = remember { samplePrefs.getString("samples", "").orEmpty().lines().filter { it.isNotBlank() }.takeLast(20).reversed() }
+    Panel(card) {
+        Text("Recent vehicle history", color=fg, fontSize=19.sp, fontWeight=FontWeight.SemiBold)
+        Text("Telemetry samples saved on this phone", color=fg.copy(alpha=.65f), fontSize=12.sp)
+        Spacer(Modifier.height(8.dp))
+        if (samples.isEmpty()) {
+            Text("No telemetry history yet. Once OverDrive sends data, recent readings will appear here.", color=fg.copy(alpha=.7f))
+        } else {
+            samples.forEach { line ->
+                val parts = line.split("|")
+                if (parts.size >= 7) {
+                    val stamp = parts[0].toLongOrNull() ?: 0L
+                    val date = if (stamp > 0L) SimpleDateFormat("MMM d • h:mm:ss a", Locale.getDefault()).format(Date(stamp)) else "Unknown time"
+                    val soc = parts[1].takeIf { it.isNotBlank() }?.let { "$it%" } ?: "—"
+                    val range = parts[2].takeIf { it.isNotBlank() }?.let { "$it mi" } ?: "—"
+                    val speed = parts[3].takeIf { it.isNotBlank() }?.let { "$it mph" } ?: "—"
+                    val charging = when (parts[5]) { "true" -> "Charging"; "false" -> "Not charging"; else -> "Unknown" }
+                    Column(Modifier.fillMaxWidth().padding(vertical=7.dp)) {
+                        Text(date, color=fg.copy(alpha=.6f), fontSize=11.sp)
+                        Text("Battery $soc  •  Range $range", color=fg, fontWeight=FontWeight.SemiBold)
+                        Text("$charging  •  Speed $speed", color=accent, fontSize=12.sp)
+                    }
+                    HorizontalDivider()
+                }
+            }
+        }
     }
 }
 @Composable
