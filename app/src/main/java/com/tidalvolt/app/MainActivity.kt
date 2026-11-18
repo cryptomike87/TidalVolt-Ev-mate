@@ -1,14 +1,12 @@
 package com.tidalvolt.app
 
 import android.os.Bundle
-import android.content.Intent
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import java.text.SimpleDateFormat
 import java.util.Date
-import java.util.Calendar
 import java.util.Locale
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -446,16 +444,15 @@ private fun MoreScreen(card: Color, fg: Color, accent: Color, dark: Boolean, set
         Text("Designed for BYD vehicles first, with room to expand to other EV brands.", color = fg.copy(alpha=.7f))
     }
     Spacer(Modifier.height(12.dp))
-    WhatsAppPanel(card, fg, accent)
+    NotificationSettingsPanel(card, fg, accent)
 }
 
 
 
 @Composable
-private fun WhatsAppPanel(card: Color, fg: Color, accent: Color) {
+private fun NotificationSettingsPanel(card: Color, fg: Color, accent: Color) {
     val context = androidx.compose.ui.platform.LocalContext.current
-    val prefs = remember { context.getSharedPreferences("tidalvolt_whatsapp", Context.MODE_PRIVATE) }
-    val telemetry by TelemetryStore.latest
+    val prefs = remember { context.getSharedPreferences("tidalvolt_notifications", Context.MODE_PRIVATE) }
     var chargingStart by remember { mutableStateOf(prefs.getBoolean("charging_start", true)) }
     var chargingComplete by remember { mutableStateOf(prefs.getBoolean("charging_complete", true)) }
     var batteryThreshold by remember { mutableStateOf(prefs.getBoolean("battery_threshold", true)) }
@@ -464,84 +461,21 @@ private fun WhatsAppPanel(card: Color, fg: Color, accent: Color) {
     var threshold by remember { mutableStateOf(prefs.getString("threshold_percent", "20") ?: "20") }
 
     fun save(key: String, value: Boolean) { prefs.edit().putBoolean(key, value).apply() }
-    fun share(text: String) {
-        val intent = Intent(Intent.ACTION_SEND).apply {
-            type = "text/plain"
-            putExtra(Intent.EXTRA_TEXT, text)
-        }
-        context.startActivity(Intent.createChooser(intent, "Share with WhatsApp"))
-    }
-    fun statusText(): String = buildString {
-        appendLine("⚡ TidalVolt vehicle update")
-        appendLine("BYD Yuan Pro")
-        appendLine("Battery: " + (telemetry?.soc?.let { "%.0f%%".format(it) } ?: "Not available"))
-        appendLine("Estimated range: " + (telemetry?.rangeMiles?.let { "%.0f mi".format(it) } ?: "Not available"))
-        appendLine("Charging: " + when (telemetry?.isCharging) { true -> "Active"; false -> "Inactive"; null -> "Unknown" })
-        appendLine("Charging power: " + (telemetry?.chargingPowerKw?.let { "%.1f kW".format(it) } ?: "Not available"))
-        appendLine("Updated: " + SimpleDateFormat("MMM d, yyyy • h:mm a", Locale.getDefault()).format(Date()))
-        append("Shared from TidalVolt")
-    }
-
-    fun dailyReportText(): String {
-        val historyPrefs = context.getSharedPreferences("tidalvolt_telemetry_history", Context.MODE_PRIVATE)
-        val dayStart = Calendar.getInstance().apply {
-            set(Calendar.HOUR_OF_DAY, 0)
-            set(Calendar.MINUTE, 0)
-            set(Calendar.SECOND, 0)
-            set(Calendar.MILLISECOND, 0)
-        }.timeInMillis
-        val rows = historyPrefs.getString("samples", "").orEmpty().lines()
-            .mapNotNull { line ->
-                val p = line.split("|")
-                if (p.size < 7) null else {
-                    val time = p[0].toLongOrNull() ?: 0L
-                    if (time < dayStart) null else p
-                }
-            }
-        if (rows.isEmpty()) return "📊 TidalVolt daily report\\n\\nNo vehicle telemetry has been recorded today."
-        val socValues = rows.mapNotNull { it[1].toDoubleOrNull() }
-        val odometers = rows.mapNotNull { it[4].toDoubleOrNull() }
-        val startSoc = socValues.firstOrNull()
-        val endSoc = socValues.lastOrNull()
-        val distance = if (odometers.size >= 2) (odometers.maxOrNull()!! - odometers.minOrNull()!!).coerceAtLeast(0.0) else null
-        val chargingSamples = rows.count { it[5] == "true" }
-        return buildString {
-            appendLine("📊 TidalVolt daily vehicle report")
-            appendLine("BYD Yuan Pro • " + SimpleDateFormat("MMM d, yyyy", Locale.getDefault()).format(Date()))
-            appendLine("Telemetry samples: ${rows.size}")
-            appendLine("Battery: ${startSoc?.let { "%.0f%%".format(it) } ?: "—"} → ${endSoc?.let { "%.0f%%".format(it) } ?: "—"}")
-            appendLine("Lowest battery: ${socValues.minOrNull()?.let { "%.0f%%".format(it) } ?: "—"}")
-            appendLine("Odometer distance: ${distance?.let { "%.1f mi".format(it) } ?: "Not available"}")
-            appendLine("Charging samples: $chargingSamples")
-            appendLine("Latest range: ${rows.last()[2].toDoubleOrNull()?.let { "%.0f mi".format(it) } ?: "Not available"}")
-            append("Generated by TidalVolt")
-        }
-    }
 
     Panel(card) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Default.Share, contentDescription = null, tint = accent)
+            Icon(Icons.Default.NotificationsActive, contentDescription = null, tint = accent)
             Spacer(Modifier.width(8.dp))
-            Text("WhatsApp sharing", color = fg, fontWeight = FontWeight.SemiBold, fontSize = 19.sp)
+            Text("Vehicle notifications", color = fg, fontWeight = FontWeight.SemiBold, fontSize = 19.sp)
         }
-        Text("Send a clean vehicle status update or daily summary through WhatsApp's Android share sheet.", color = fg.copy(alpha=.7f))
-        Spacer(Modifier.height(10.dp))
-        Button(onClick = { share(statusText()) }, modifier = Modifier.fillMaxWidth()) {
-            Icon(Icons.Default.Chat, contentDescription = null)
-            Spacer(Modifier.width(8.dp))
-            Text("Share vehicle status")
-        }
-        OutlinedButton(onClick = { share(dailyReportText()) }, modifier = Modifier.fillMaxWidth()) {
-            Text("Share daily report")
-        }
+        Text("TidalVolt will alert you directly on this phone. No messaging account, phone number or external service is needed.", color = fg.copy(alpha=.7f))
         Spacer(Modifier.height(12.dp))
-        Text("Automatic event preferences", color = fg, fontWeight = FontWeight.SemiBold)
-        Text("Choose which events you want TidalVolt to prepare for automatic delivery.", color = fg.copy(alpha=.65f), fontSize = 12.sp)
-        WhatsAppToggle("Charging started", chargingStart) { chargingStart=it; save("charging_start",it) }
-        WhatsAppToggle("Charging completed", chargingComplete) { chargingComplete=it; save("charging_complete",it) }
-        WhatsAppToggle("Battery threshold reached", batteryThreshold) { batteryThreshold=it; save("battery_threshold",it) }
-        WhatsAppToggle("Trip completed", tripComplete) { tripComplete=it; save("trip_complete",it) }
-        WhatsAppToggle("Daily report", dailyReport) { dailyReport=it; save("daily_report",it) }
+        Text("Automatic event alerts", color = fg, fontWeight = FontWeight.SemiBold)
+        NotificationToggle("Charging started", chargingStart) { chargingStart=it; save("charging_start",it) }
+        NotificationToggle("Charging completed", chargingComplete) { chargingComplete=it; save("charging_complete",it) }
+        NotificationToggle("Battery threshold", batteryThreshold) { batteryThreshold=it; save("battery_threshold",it) }
+        NotificationToggle("Trip completed", tripComplete) { tripComplete=it; save("trip_complete",it) }
+        NotificationToggle("Daily vehicle report", dailyReport) { dailyReport=it; save("daily_report",it) }
         OutlinedTextField(
             value=threshold,
             onValueChange={ value -> if (value.isEmpty() || (value.toIntOrNull()?.let { it in 1..100 } == true)) { threshold=value; prefs.edit().putString("threshold_percent",value).apply() } },
@@ -551,12 +485,12 @@ private fun WhatsAppPanel(card: Color, fg: Color, accent: Color) {
             modifier=Modifier.fillMaxWidth()
         )
         Spacer(Modifier.height(8.dp))
-        Text("Manual sharing works with the regular WhatsApp app. Automatic WhatsApp delivery requires a WhatsApp Business Platform account, an approved message template and secure API configuration. These preferences are saved on this phone; automatic delivery is not active until that service is connected.", color=fg.copy(alpha=.65f), fontSize=11.sp)
+        Text("Notifications are delivered by Android. Android notification permission must be allowed. Trip and daily-report alerts will only activate once their detection and schedule are implemented against verified vehicle data.", color=fg.copy(alpha=.65f), fontSize=11.sp)
     }
 }
 
 @Composable
-private fun WhatsAppToggle(label: String, checked: Boolean, onChange: (Boolean)->Unit) {
+private fun NotificationToggle(label: String, checked: Boolean, onChange: (Boolean)->Unit) {
     Row(Modifier.fillMaxWidth().padding(vertical=3.dp), horizontalArrangement=Arrangement.SpaceBetween, verticalAlignment=Alignment.CenterVertically) {
         Text(label, fontSize=14.sp)
         Switch(checked=checked, onCheckedChange=onChange)
