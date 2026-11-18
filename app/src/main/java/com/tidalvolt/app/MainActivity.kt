@@ -140,7 +140,6 @@ private fun VehicleScreen(card: Color, fg: Color, accent: Color) {
     Panel(card) {
         Text("Vehicle connection", color = fg, fontWeight = FontWeight.SemiBold)
         Text(if (telemetry != null) "Receiving live vehicle data. Confirm readings against the vehicle display during initial testing." else "No live BYD telemetry has been received yet. Run the head-unit connection check in More.", color = fg.copy(alpha=.7f))
-        Text("Connection: ${DirectBydAdbManager.status.value}", color = accent, fontSize = 12.sp)
     }
 }
 
