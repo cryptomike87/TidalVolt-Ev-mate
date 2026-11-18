@@ -34,8 +34,14 @@ object TelemetryReceiverServer {
         pairingToken = prefs.getString("pairing_token", null) ?: UUID.randomUUID().toString().replace("-", "").take(16).also {
             prefs.edit().putString("pairing_token", it).apply()
         }
-        val address = discoverLocalIpv4()
-        endpoint.value = if (address != null) "ws://$address:$PORT/tidalvolt?token=$pairingToken" else "Waiting for Wi-Fi or hotspot IP"
+        val tailscaleAddress = discoverTailscaleIpv4()
+        val localAddress = discoverLocalIpv4()
+        val address = tailscaleAddress ?: localAddress
+        endpoint.value = when {
+            tailscaleAddress != null -> "ws://$tailscaleAddress:$PORT/tidalvolt?token=$pairingToken"
+            localAddress != null -> "ws://$localAddress:$PORT/tidalvolt?token=$pairingToken (local network only — connect Tailscale for remote access)"
+            else -> "Tailscale not connected — enable Tailscale on this phone"
+        }
         status.value = "Starting receiver…"
 
         val instance = object : WebSocketServer(InetSocketAddress("0.0.0.0", PORT)) {
@@ -96,6 +102,28 @@ object TelemetryReceiverServer {
     }
 
     fun isRunning(): Boolean = running.get()
+
+    /** Tailscale IPv4 addresses are allocated from 100.64.0.0/10. */
+    private fun discoverTailscaleIpv4(): String? {
+        return try {
+            val interfaces = NetworkInterface.getNetworkInterfaces()
+            while (interfaces.hasMoreElements()) {
+                val network = interfaces.nextElement()
+                if (!network.isUp || network.isLoopback) continue
+                val addresses = network.inetAddresses
+                while (addresses.hasMoreElements()) {
+                    val address = addresses.nextElement()
+                    if (address is Inet4Address && !address.isLoopbackAddress && !address.isLinkLocalAddress) {
+                        val octets = address.hostAddress?.substringBefore('%')?.split(".")?.mapNotNull { it.toIntOrNull() }
+                        if (octets?.size == 4 && octets[0] == 100 && octets[1] in 64..127) {
+                            return address.hostAddress?.substringBefore('%')
+                        }
+                    }
+                }
+            }
+            null
+        } catch (_: Exception) { null }
+    }
 
     private fun discoverLocalIpv4(): String? {
         return try {
