@@ -160,6 +160,7 @@ private data class ChargeRecord(
 @Composable
 private fun ChargeScreen(card: Color, fg: Color, accent: Color) {
     val context = androidx.compose.ui.platform.LocalContext.current
+    val telemetry by TelemetryStore.latest
     val prefs = remember { context.getSharedPreferences("tidalvolt_charge_history", Context.MODE_PRIVATE) }
     var current by remember { mutableStateOf("") }
     var target by remember { mutableStateOf("90") }
@@ -177,6 +178,24 @@ private fun ChargeScreen(card: Color, fg: Color, accent: Color) {
                 }
             }
         }
+    }
+    if (telemetry != null) {
+        Panel(card) {
+            Text("Live charging", color=fg, fontWeight=FontWeight.SemiBold, fontSize=19.sp)
+            Text(when (telemetry?.isCharging) { true -> "Vehicle is charging"; false -> "Vehicle is not charging"; null -> "Charging state unavailable" }, color=accent, fontWeight=FontWeight.SemiBold)
+            Spacer(Modifier.height(10.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement=Arrangement.SpaceBetween) {
+                Metric("Battery", telemetry?.soc?.let { "%.0f%%".format(it) } ?: "Unavailable", fg)
+                Metric("Charging power", telemetry?.chargingPowerKw?.let { "%.1f kW".format(it) } ?: "Unavailable", fg)
+            }
+            Spacer(Modifier.height(8.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement=Arrangement.SpaceBetween) {
+                Metric("Added / current range", telemetry?.rangeMiles?.let { "%.0f mi range".format(it) } ?: "Unavailable", fg)
+                Metric("Time to full", telemetry?.chargingEtaMinutes?.let { "%.0f min".format(it) } ?: "Unavailable", fg)
+            }
+            Text("Live values appear here when OverDrive is sending telemetry to your phone.", color=fg.copy(alpha=.6f), fontSize=11.sp)
+        }
+        Spacer(Modifier.height(14.dp))
     }
     val from = current.toDoubleOrNull()?.coerceIn(0.0,100.0)
     val to = target.toDoubleOrNull()?.coerceIn(0.0,100.0)
