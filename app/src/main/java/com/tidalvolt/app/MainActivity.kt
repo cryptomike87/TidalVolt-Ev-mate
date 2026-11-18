@@ -449,10 +449,7 @@ private fun StatsScreen(card: Color, fg: Color, accent: Color) {
 }
 @Composable
 private fun MoreScreen(card: Color, fg: Color, accent: Color, dark: Boolean, setDark: (Boolean)->Unit) {
-    Panel(card) {
-        Text("Vehicle data connection", color = fg, fontWeight = FontWeight.SemiBold, fontSize = 19.sp)
-        Text("Direct BYD head-unit access is the current development priority. The MQTT receiver setup is temporarily hidden while we test the vehicle's built-in data services.", color = fg.copy(alpha=.7f))
-    }
+    MqttSettingsPanel(card, fg, accent)
     Spacer(Modifier.height(12.dp))
     Panel(card) {
         Text("Appearance", color = fg, fontWeight = FontWeight.SemiBold, fontSize = 19.sp)
