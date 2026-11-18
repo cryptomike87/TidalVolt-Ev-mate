@@ -14,6 +14,22 @@ A clean Android companion app foundation for BYD EV owners, designed to expand t
 ## Build
 Open this repository in Android Studio, or run the **TidalVolt Android CI** workflow from the Actions tab. Successful runs upload a `TidalVolt-debug-apk` artifact.
 
+## EV tools hub
+
+The Tools tab now includes the first integrated feature surfaces for:
+- Smart charging forecasts using editable battery capacity, target SOC, tariff and loss assumptions.
+- Petrol-versus-EV ownership cost comparisons, including free workplace charging.
+- Parking session timing and manually observed parked SOC change.
+- Trip energy and estimated arrival SOC calculations.
+- Battery diagnostics readiness with unavailable values clearly identified until telemetry supplies them.
+- Indicative driving-efficiency scoring and a parked battery-drain calculator.
+- Locally stored maintenance items.
+- On-device EV guidance for charging, range, savings and battery questions.
+- Local/Tailscale endpoint preference settings.
+- Editable vehicle profile assumptions and share-sheet export.
+
+These tools are deliberately honest about their data sources. Calculators and manually entered records work offline; they do not claim to be live telemetry. The assistant is currently a local guidance tool, not a cloud LLM. The connection screen saves endpoint preferences but does not yet implement HTTP polling or automatic local-to-Tailscale failover. Parking automation, background notifications, live route directions, weather, BMS fault retrieval and multi-vehicle telemetry adapters still require their respective platform/data integrations.
+
 ## Live vehicle telemetry
 
 ### Built-in local receiver (recommended)
