@@ -50,8 +50,8 @@ object TelemetryReceiverServer {
             }
 
             override fun onClose(conn: WebSocket, code: Int, reason: String, remote: Boolean) {
-                connected.value = connections.any { it.isOpen }
-                status.value = if (connected.value) "OverDrive connected" else "Waiting for OverDrive"
+                connected.value = false
+                status.value = "Waiting for OverDrive"
             }
 
             override fun onMessage(conn: WebSocket, message: String) {
