@@ -39,7 +39,7 @@ dependencies {
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-extended")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
-    implementation("org.eclipse.paho:org.eclipse.paho.client.mqttv3:1.2.5")
-    implementation("io.moquette:moquette-broker:0.17")
+    // Local ADB client for the BYD head unit; MQTT is no longer used.
+    implementation("dev.mobile:dadb:2.0.0")
     debugImplementation("androidx.compose.ui:ui-tooling")
 }
