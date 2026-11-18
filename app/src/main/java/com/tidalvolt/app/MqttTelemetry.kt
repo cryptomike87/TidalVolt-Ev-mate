@@ -142,9 +142,11 @@ object TelemetryStore {
             val start = (history.length() - MAX_SNAPSHOTS).coerceAtLeast(0)
             for (i in start until history.length()) trimmed.put(history.getJSONObject(i))
             prefs.edit().putString(LATEST_KEY, payload).putLong(LATEST_TIME_KEY, telemetry.receivedAtMillis).putString(HISTORY_KEY, trimmed.toString()).commit()
-            latest.value = telemetry
-            historyCount.value = trimmed.length()
-            lastSavedAt.value = telemetry.receivedAtMillis
+            mainHandler.post {
+                latest.value = telemetry
+                historyCount.value = trimmed.length()
+                lastSavedAt.value = telemetry.receivedAtMillis
+            }
         }
     }
 
@@ -219,10 +221,8 @@ object MqttTelemetryManager {
                 override fun messageArrived(receivedTopic: String, message: MqttMessage) {
                     try {
                         val parsed = EvTelemetry.fromJson(message.payload.toString(Charsets.UTF_8))
-                        mainHandler.post {
-                            TelemetryStore.save(message.payload.toString(Charsets.UTF_8), parsed)
-                            setStatus("Connected • live data saved on device")
-                        }
+                        TelemetryStore.save(message.payload.toString(Charsets.UTF_8), parsed)
+                        setStatus("Connected • live data saved on device")
                     } catch (_: Exception) {
                         setStatus("Connected • received an unreadable telemetry message")
                     }
