@@ -81,7 +81,7 @@ fun FeatureHubScreen(card: Color, fg: Color, accent: Color) {
         Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(9.dp),content=content)
     }
 }
-@Composable private fun ToolField(label:String,value:String,onValue:(String)->Unit,keyboard:KeyboardType=KeyboardType.Decimal) {
+@Composable private fun ToolField(label:String,value:String,keyboard:KeyboardType=KeyboardType.Decimal,onValue:(String)->Unit) {
     OutlinedTextField(value=value,onValueChange=onValue,label={Text(label)},singleLine=true,keyboardOptions=KeyboardOptions(keyboardType=keyboard),modifier=Modifier.fillMaxWidth())
 }
 @Composable private fun ToolMetric(label:String,value:String,fg:Color,accent:Color) {
