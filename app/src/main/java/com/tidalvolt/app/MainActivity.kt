@@ -203,7 +203,9 @@ private fun ChargeScreen(card: Color, fg: Color, accent: Color) {
     val from = current.toDoubleOrNull()?.coerceIn(0.0,100.0)
     val to = target.toDoubleOrNull()?.coerceIn(0.0,100.0)
     val tariff = rate.toDoubleOrNull()?.coerceAtLeast(0.0)
-    val gridKwh = if (from != null && to != null && to >= from) 45.1 * (to-from) / 100.0 / .95 else null
+    val batteryKwh = if (from != null && to != null && to >= from) 45.1 * (to-from) / 100.0 else null
+    val gridKwh = batteryKwh?.div(0.95)
+    val lossKwh = if (gridKwh != null && batteryKwh != null) gridKwh - batteryKwh else null
     val estimate = if (gridKwh != null && tariff != null) gridKwh * tariff else null
     Panel(card) {
         Text("Charging estimator", color = fg, fontWeight = FontWeight.SemiBold, fontSize = 19.sp)
@@ -213,8 +215,10 @@ private fun ChargeScreen(card: Color, fg: Color, accent: Color) {
         NumberField("Target battery %", target, { target=it }, fg)
         NumberField("Electricity price (BSD/kWh)", rate, { rate=it }, fg)
         Spacer(Modifier.height(14.dp))
-        if (gridKwh != null && estimate != null) {
-            Text("Estimated grid energy: %.2f kWh".format(gridKwh), color = fg)
+        if (gridKwh != null && estimate != null && batteryKwh != null && lossKwh != null) {
+            Text("Energy stored in battery: %.2f kWh".format(batteryKwh), color = fg)
+            Text("Estimated 5% charging loss: %.2f kWh".format(lossKwh), color = fg.copy(alpha=.7f), fontSize = 12.sp)
+            Text("Estimated energy from charger: %.2f kWh".format(gridKwh), color = fg, fontWeight = FontWeight.SemiBold)
             Text("Estimated cost: BSD $%.2f".format(estimate), color = accent, fontSize = 27.sp, fontWeight = FontWeight.Bold)
         } else {
             Text("Enter a valid current battery level and a target at or above it to see your estimate.", color = fg.copy(alpha=.7f))
@@ -275,13 +279,13 @@ private fun ChargeScreen(card: Color, fg: Color, accent: Color) {
         }, fg)
         val miles = distanceSinceCharge.toDoubleOrNull()?.coerceAtLeast(0.0) ?: 0.0
         val gas = petrolPrice.toDoubleOrNull()?.coerceAtLeast(0.0) ?: 0.0
-        val evCost = miles * 20.0 / 100.0 * (rate.toDoubleOrNull()?.coerceAtLeast(0.0) ?: 0.55)
+        val evCost = miles * 20.0 / 100.0 / .95 * (rate.toDoubleOrNull()?.coerceAtLeast(0.0) ?: 0.55)
         val petrolCost = miles / 15.0 * gas
         Spacer(Modifier.height(8.dp))
         Metric("Estimated EV cost", "BSD $%.2f".format(evCost), fg)
         Metric("Estimated petrol cost", "BSD $%.2f".format(petrolCost), fg)
         Text("Estimated savings: BSD $%.2f".format(petrolCost - evCost), color=accent, fontSize=24.sp, fontWeight=FontWeight.Bold)
-        Text("Estimate uses 20 kWh/100 mi, 15 MPG and your electricity and petrol prices. Mileage is currently entered manually; automatic odometer tracking is not connected.", color=fg.copy(alpha=.6f), fontSize=11.sp)
+        Text("Estimate includes the automatic 5% charging-loss allowance and uses 20 kWh/100 mi, 15 MPG and your electricity and petrol prices. Mileage is currently entered manually; automatic odometer tracking is not connected.", color=fg.copy(alpha=.6f), fontSize=11.sp)
     }
     Spacer(Modifier.height(14.dp))
     Panel(card) {
@@ -314,7 +318,7 @@ private fun SavingsScreen(card: Color, fg: Color, accent: Color) {
     var petrol by remember { mutableStateOf("6.85") }
     val distance = miles.toDoubleOrNull()?.coerceAtLeast(0.0) ?: 0.0
     val fuel = petrol.toDoubleOrNull()?.coerceAtLeast(0.0) ?: 0.0
-    val evCost = distance * 20.0 / 100.0 * .55
+    val evCost = distance * 20.0 / 100.0 / .95 * .55
     val gasCost = distance / 15.0 * fuel
     Panel(card) {
         Text("EV vs petrol savings", color = fg, fontSize = 19.sp, fontWeight = FontWeight.SemiBold)
@@ -325,7 +329,7 @@ private fun SavingsScreen(card: Color, fg: Color, accent: Color) {
         Spacer(Modifier.height(8.dp))
         Metric("Estimated petrol cost", "BSD $%.2f".format(gasCost), fg)
         Text("Estimated monthly difference: BSD $%.2f".format(max(0.0,gasCost-evCost)), color=accent, fontSize=24.sp, fontWeight=FontWeight.Bold)
-        Text("Illustrative assumptions: 20 kWh/100 mi, BSD $0.55/kWh, 15 MPG. Edit assumptions in a future settings update.", color=fg.copy(alpha=.6f), fontSize=11.sp)
+        Text("Illustrative assumptions include 5% charging loss: 20 kWh/100 mi from the battery, BSD $0.55/kWh and 15 MPG.", color=fg.copy(alpha=.6f), fontSize=11.sp)
     }
 }
 
