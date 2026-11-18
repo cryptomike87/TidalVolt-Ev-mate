@@ -2,6 +2,8 @@ package com.tidalvolt.app
 
 import android.os.Bundle
 import android.content.Intent
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import java.text.SimpleDateFormat
@@ -334,25 +336,51 @@ private fun StatsScreen(card: Color, fg: Color, accent: Color) {
 @Composable
 private fun MoreScreen(card: Color, fg: Color, accent: Color, dark: Boolean, setDark: (Boolean)->Unit) {
     val context = androidx.compose.ui.platform.LocalContext.current
-    val connectionStatus by DirectBydAdbManager.status
-    val diagnosticDetails by DirectBydAdbManager.details
+    val receiverStatus by TelemetryReceiverServer.status
+    val receiverEndpoint by TelemetryReceiverServer.endpoint
+    val receiverConnected by TelemetryReceiverServer.connected
+    var receiverStarted by remember { mutableStateOf(TelemetryReceiverServer.isRunning()) }
+    val telemetry by TelemetryStore.latest
 
     Panel(card) {
-        Text("Direct BYD connection", color = fg, fontWeight = FontWeight.SemiBold, fontSize = 19.sp)
-        Text("TidalVolt is preparing a local ADB connection to the vehicle's own Android debugging service. No MQTT broker, OverDrive connection, cloud server or external phone is used.", color = fg.copy(alpha=.7f))
+        Text("OverDrive connection", color = fg, fontWeight = FontWeight.SemiBold, fontSize = 19.sp)
+        Text("TidalVolt runs on your phone and receives vehicle telemetry from OverDrive on the BYD head unit over your local Wi-Fi or phone hotspot. No MQTT broker is required.", color = fg.copy(alpha=.7f))
         Spacer(Modifier.height(10.dp))
-        Text("Connection status: $connectionStatus", color = accent, fontWeight = FontWeight.SemiBold)
-        if (diagnosticDetails.isNotBlank()) {
-            Spacer(Modifier.height(6.dp))
-            Text(diagnosticDetails, color = fg.copy(alpha=.7f), fontSize = 12.sp)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Default.Circle, contentDescription = null, tint = if (receiverConnected) Color(0xFF2EAA70) else fg.copy(alpha=.35f), modifier = Modifier.size(10.dp))
+            Spacer(Modifier.width(8.dp))
+            Text(receiverStatus, color = accent, fontWeight = FontWeight.SemiBold)
         }
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(8.dp))
+        Text("Phone receiver address", color = fg.copy(alpha=.65f), fontSize = 12.sp)
+        Text(receiverEndpoint, color = fg, fontSize = 12.sp)
+        Spacer(Modifier.height(10.dp))
         Button(
-            onClick = { DirectBydAdbManager.runDiagnostics(context) },
-            enabled = connectionStatus != "Checking local ADB…",
+            onClick = {
+                if (receiverStarted) {
+                    TelemetryReceiverServer.stop()
+                    receiverStarted = false
+                } else {
+                    TelemetryReceiverServer.start(context)
+                    receiverStarted = true
+                }
+            },
             modifier = Modifier.fillMaxWidth()
-        ) { Text(if (connectionStatus == "Checking local ADB…") "Checking…" else "Check head-unit connection") }
-        Text("First connection may show an Android debugging authorization prompt. Select Always allow from this computer, then tap Allow. This phase runs read-only identity and firmware checks; it does not query or control vehicle systems.", color = fg.copy(alpha=.6f), fontSize = 11.sp)
+        ) { Text(if (receiverStarted) "Stop receiver" else "Start phone receiver") }
+        OutlinedButton(
+            onClick = {
+                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                clipboard.setPrimaryClip(ClipData.newPlainText("TidalVolt receiver address", receiverEndpoint))
+            },
+            enabled = receiverStarted && receiverEndpoint.startsWith("ws://"),
+            modifier = Modifier.fillMaxWidth()
+        ) { Text("Copy connection address") }
+        Text("Connect the phone and BYD head unit to the same local network. Then configure OverDrive to send telemetry to the address above. The receiver uses a pairing token and accepts read-only telemetry JSON. The exact OverDrive output format still needs to be confirmed on your head unit.", color = fg.copy(alpha=.6f), fontSize = 11.sp)
+    }
+    Spacer(Modifier.height(12.dp))
+    Panel(card) {
+        Text("Latest received data", color = fg, fontWeight = FontWeight.SemiBold)
+        Text(if (telemetry == null) "Waiting for the first OverDrive telemetry packet." else "Last packet: " + SimpleDateFormat("h:mm:ss a", Locale.getDefault()).format(Date(telemetry!!.receivedAtMillis)), color = fg.copy(alpha=.7f))
     }
     Spacer(Modifier.height(12.dp))
     Panel(card) {
@@ -432,7 +460,7 @@ private fun WhatsAppPanel(card: Color, fg: Color, accent: Color) {
         WhatsAppToggle("Daily report", dailyReport) { dailyReport=it; save("daily_report",it) }
         OutlinedTextField(
             value=threshold,
-            onValueChange={ value -> if (value.isEmpty() || value.toIntOrNull() in 1..100) { threshold=value; prefs.edit().putString("threshold_percent",value).apply() } },
+            onValueChange={ value -> if (value.isEmpty() || (value.toIntOrNull()?.let { it in 1..100 } == true)) { threshold=value; prefs.edit().putString("threshold_percent",value).apply() } },
             label={ Text("Battery alert threshold (%)") },
             keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Number),
             singleLine=true,
