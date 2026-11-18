@@ -61,6 +61,7 @@ object TelemetryReceiverServer {
                     val data = EvTelemetry.fromJson(payload)
                     TelemetryStore.latest.value = data
                     TelemetryHistory.record(context.applicationContext, data)
+                    VehicleNotificationEvents.onTelemetry(context.applicationContext, data)
                     status.value = "Receiving vehicle data"
                 } catch (error: Exception) {
                     status.value = "Connected • unrecognized data format"
