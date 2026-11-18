@@ -223,7 +223,12 @@ private fun VehicleScreen(card: Color, fg: Color, accent: Color) {
         Text("Live vehicle overview", color = fg.copy(alpha=.65f))
         Spacer(Modifier.height(20.dp))
         Text(telemetry?.soc?.let { "%.0f%%".format(it) } ?: "—", color = accent, fontSize = 54.sp, fontWeight = FontWeight.Bold)
-        Text(if (telemetry != null) "Battery level • Live OverDrive telemetry" else "Battery level • Waiting for live vehicle data", color = fg.copy(alpha=.65f))
+        Text(
+            if (telemetry == null) "Battery level • Waiting for vehicle data"
+            else if (MqttTelemetryManager.status.value.contains("live data")) "Battery level • Live OverDrive telemetry"
+            else "Battery level • Last saved reading (offline cache)",
+            color = fg.copy(alpha=.65f)
+        )
         Spacer(Modifier.height(12.dp))
         LinearProgressIndicator(progress = { ((telemetry?.soc ?: 0.0) / 100.0).toFloat().coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth(), color = accent)
         Spacer(Modifier.height(18.dp))
@@ -266,7 +271,12 @@ private fun VehicleScreen(card: Color, fg: Color, accent: Color) {
     Spacer(Modifier.height(14.dp))
     Panel(card) {
         Text("Vehicle connection", color = fg, fontWeight = FontWeight.SemiBold)
-        Text(if (telemetry != null) "Receiving live vehicle data from OverDrive. Confirm readings against the vehicle display during initial testing." else "Direct BYD head-unit connection is being prepared. No external receiver is required for the planned approach.", color = fg.copy(alpha=.7f))
+        Text(
+            if (MqttTelemetryManager.status.value.contains("live data")) "Receiving and saving live vehicle data from OverDrive."
+            else if (telemetry != null) "Network unavailable. Showing the last saved vehicle readings from this phone."
+            else "No vehicle data has been received yet. Connect OverDrive to begin building your offline archive.",
+            color = fg.copy(alpha=.7f)
+        )
         Text("Connection: ${MqttTelemetryManager.status.value}", color = accent, fontSize = 12.sp)
         Text(
             if (savedAt > 0L) "Saved on this phone • ${SimpleDateFormat("MMM d, h:mm a", Locale.getDefault()).format(Date(savedAt))}"
