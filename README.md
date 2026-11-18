@@ -8,7 +8,6 @@ A clean Android companion app foundation for BYD EV owners, designed to expand t
 - Vehicle overview with clearly labelled demo values
 - Charging cost estimator using editable battery and electricity settings
 - EV-versus-petrol savings estimator
-- Nassau map screen foundation
 - GitHub Actions workflow for debug APK builds
 
 ## Build
@@ -28,7 +27,7 @@ The Tools tab now includes the first integrated feature surfaces for:
 - Local/Tailscale endpoint preference settings.
 - Editable vehicle profile assumptions and share-sheet export.
 
-These tools are deliberately honest about their data sources. Calculators and manually entered records work offline; they do not claim to be live telemetry. The assistant is currently a local guidance tool, not a cloud LLM. The connection screen saves endpoint preferences but does not yet implement HTTP polling or automatic local-to-Tailscale failover. Parking automation, background notifications, live route directions, weather, BMS fault retrieval and multi-vehicle telemetry adapters still require their respective platform/data integrations.
+These tools are deliberately honest about their data sources. Calculators and manually entered records work offline; they do not claim to be live telemetry. The assistant is currently a local guidance tool, not a cloud LLM. The connection screen saves endpoint preferences but does not yet implement HTTP polling or automatic local-to-Tailscale failover. Parking automation, background notifications, live route directions, weather integration, BMS fault retrieval and multi-vehicle telemetry adapters still require their respective platform/data integrations.
 
 ## Live vehicle telemetry
 
@@ -53,3 +52,7 @@ BYD Trip Stats compatibility must be confirmed on the target vehicle/head-unit f
 
 ## Important
 Vehicle values are shown as unavailable until a real telemetry message is received. No sample BMS readings are presented as live.
+
+## Weather data source
+
+TidalVolt will use [Open-Meteo](https://open-meteo.com/) for automatic weather context. Its forecast API requires no API key and provides current conditions and hourly forecasts. The hosted free tier is for non-commercial use (up to 10,000 calls/day); displayed data must include attribution to Open-Meteo under CC BY 4.0. Commercial distribution requires an appropriate Open-Meteo plan or a self-hosted deployment. The server source is AGPLv3.
