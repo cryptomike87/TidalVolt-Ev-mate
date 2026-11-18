@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_root" android:layout_width="match_parent" android:layout_height="match_parent"
+    android:orientation="vertical" android:padding="16dp" android:background="@drawable/widget_background">
+    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="TIDALVOLT • CHARGING" android:textStyle="bold" android:textSize="11sp" android:textColor="#397D78"/>
+    <TextView android:id="@+id/widget_charging_state" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Charging status unavailable" android:textSize="18sp" android:textStyle="bold" android:textColor="#26302F"/>
+    <TextView android:id="@+id/widget_charging_soc" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Battery: —" android:textSize="14sp" android:textColor="#26302F"/>
+    <TextView android:id="@+id/widget_charging_power" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Power: — kW" android:textSize="14sp" android:textColor="#26302F"/>
+    <TextView android:id="@+id/widget_charging_eta" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="ETA unavailable" android:textSize="12sp" android:textColor="#777777"/>
+</LinearLayout>
