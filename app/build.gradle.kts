@@ -12,8 +12,8 @@ android {
         applicationId = "com.tidalvolt.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 3
+        versionName = "1.2.0"
     }
 
     packaging {
@@ -39,7 +39,7 @@ dependencies {
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-extended")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
-    implementation("org.eclipse.paho:org.eclipse.paho.client.mqttv3:1.2.5")
-    implementation("io.moquette:moquette-broker:0.17")
+    // Local WebSocket receiver for OverDrive telemetry from the BYD head unit.
+    implementation("org.java-websocket:Java-WebSocket:1.5.7")
     debugImplementation("androidx.compose.ui:ui-tooling")
 }

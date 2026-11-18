@@ -1,39 +1,85 @@
 # TidalVolt
 
-A clean Android companion app foundation for BYD EV owners, designed to expand to other EV brands.
+A phone-first EV companion for BYD vehicles, with a clean Tesla-inspired / Apple-like interface. OverDrive remains on the BYD head unit and acts as the telemetry collector; TidalVolt runs on the phone.
 
-## Current foundation
-- Jetpack Compose Android app
-- Pearl White and Obsidian appearance themes
-- Vehicle overview with clearly labelled demo values
-- Charging cost estimator using editable battery and electricity settings
-- EV-versus-petrol savings estimator
-- Nassau map screen foundation
-- GitHub Actions workflow for debug APK builds
+## Product direction
+
+- Phone-only companion app; no Android Auto interface.
+- Map feature removed completely, including map UI and location permissions.
+- Minimal vehicle dashboard, charging, trip history, insights and settings.
+- Local-first storage for telemetry samples and vehicle history.
+- No MQTT broker subscription or cloud relay required for local data transfer.
+
+## OverDrive connection
+
+TidalVolt hosts a token-protected WebSocket receiver on the phone (port 8765). For remote access across different networks, install Tailscale on both the phone and BYD head unit, sign both devices into the same Tailscale account/tailnet, and leave Tailscale connected. In More → Connection Settings, choose Automatic (Tailscale preferred), Tailscale only, or Local network only. The default listening port is 8765 and can be changed to any port from 1024 to 65535. An optional manual Tailscale IP override is available if automatic interface detection does not find the phone's address. Save and apply the settings, then start the receiver in More → OverDrive connection. TidalVolt detects its 100.64.0.0/10 address when possible and displays the configured WebSocket URL; copy that exact URL into OverDrive's sender configuration. The receiver binds to all phone interfaces so the Tailscale VPN interface can reach it.
+
+The receiver accepts either a flat JSON telemetry object or an object containing a nested telemetry object. The initial normalized fields include:
+
+- soc
+- ev_range_km
+- speed
+- power
+- charge_power
+- is_charging
+- batt_temp
+- odometer
+- soh, soh_oem
+- hv_pack_v
+- cell_v_min, cell_v_max
+- charging_eta_minutes
+
+The phone generates a pairing token and includes it in the WebSocket URL. The sender must connect to the exact URL shown in TidalVolt. The receiver is read-only: it accepts telemetry and does not send vehicle-control commands.
+
+### Important integration status
+
+The phone receiver and JSON parser are implemented, but the OverDrive sender interface and exact outgoing payload have not yet been verified on the user's BYD head unit. Do not treat sample or unavailable fields as live readings. A live connection is confirmed only after the app receives and displays actual vehicle packets.
+
+The receiver currently runs while the TidalVolt app process is alive. Keep TidalVolt open during the first remote-connection test. A foreground service and automatic reconnect lifecycle are still required before relying on unattended background collection; Android may stop an ordinary app process.
+
+### Tailscale setup
+
+1. Install the official Tailscale Android app on the phone and the BYD head unit (Android 8.0 or newer is supported).
+2. Sign in on both devices using the same identity provider/account so they join the same tailnet.
+3. Approve both devices in the Tailscale admin console if prompted, then confirm both show connected.
+4. On the phone, open TidalVolt → More → OverDrive connection → Start phone receiver.
+5. In TidalVolt → More → Connection Settings, select Automatic or Tailscale only and confirm the listening port (default 8765). Save settings, start the receiver, and copy the exact WebSocket address shown into OverDrive's sender. Use the actual address shown in the app; do not copy an example address.
+6. Keep Tailscale enabled on both devices. The head unit must have internet access and remain awake/online to send live data.
+
+Official installation instructions: https://tailscale.com/docs/install/android. For manual APK installation, use the official stable Android package page: https://dl.tailscale.com/stable/.
+
+Tailscale provides the private encrypted network; it does not collect vehicle data itself. OverDrive remains the data sender, and TidalVolt remains a read-only receiver. No MQTT broker, public port forwarding, or public WebSocket endpoint is needed.
+
+## Parking and activity tracking
+
+Parking time remains part of the product. TidalVolt will use OverDrive's existing parking state/timer data rather than introducing a separate location or motion-tracking dependency. The current activity screen is a placeholder; the exact OverDrive parking payload field still needs to be confirmed on the head unit before completed parking durations can be recorded reliably.
+
+## Charging costs and comparison
+
+The charging estimator automatically includes a 5% charging-loss allowance (95% charging efficiency) and displays the energy stored in the battery, estimated loss, energy drawn from the charger and estimated cost. EV-versus-petrol comparisons are retained and include the same charging-loss allowance in EV energy costs.
+
+## Android notifications
+
+- No WhatsApp integration, phone number, Business API, MQTT broker or paid messaging service.
+- Android notifications are generated locally from received vehicle telemetry.
+- Charging-start, charging-stop, low-battery threshold and a conservative stopped-for-three-minutes trip-completion heuristic are implemented.
+- Notification preferences are stored on the phone. Android 13+ notification permission is requested on first launch.
+- Daily-report notification scheduling is not yet implemented.
+- Trip detection is provisional and must be validated against real OverDrive update cadence before being relied on.
+
+## Android home-screen widgets
+
+TidalVolt includes three resizable Android home-screen widgets:
+- Battery: state of charge, estimated range and last update time.
+- Charging: charging state, battery level, charging power and estimated time to full.
+- Vehicle overview: battery, range, speed and charging state.
+
+Widgets refresh whenever a new OverDrive telemetry packet is received. They display unavailable values as unavailable rather than inventing readings. Tap a widget to open TidalVolt. Add them from the Android launcher widget picker.
+
+## Local history
+
+Incoming telemetry samples are stored locally on the phone (up to 5,000 recent samples in the current implementation). The app will retain history while the vehicle is disconnected. Trip segmentation and automated charging-session lifecycle will be enabled after the incoming OverDrive fields and update cadence are validated.
 
 ## Build
-Open this repository in Android Studio, or run the **TidalVolt Android CI** workflow from the Actions tab. Successful runs upload a `TidalVolt-debug-apk` artifact.
 
-## Live vehicle telemetry
-
-### Built-in local receiver (recommended)
-TidalVolt can host a password-protected MQTT broker directly on the phone. This removes the need for a cloud broker account or a separate always-on server.
-
-1. Open TidalVolt → More → Vehicle data connection → **Start local receiver**.
-2. Connect the BYD DiLink head unit to the phone's Wi-Fi hotspot. The phone and car must be on the same local network.
-3. In OverDrive → MQTT → Add Connection, enter the phone network address, port `1883`, the generated username/password shown by TidalVolt, and topic `overdrive/vehicle/telemetry`.
-4. Keep Home Assistant discovery OFF (Aggregate mode) and **Allow vehicle control OFF**.
-5. In TidalVolt, tap **Connect TidalVolt to its receiver**.
-
-The broker runs inside the TidalVolt app process and listens on the phone's network interfaces. Keep TidalVolt open during this initial test; a future foreground-service implementation is needed for robust background operation. The local MQTT connection is not TLS-encrypted, so use it only on a trusted private hotspot and do not share the generated password.
-
-### Data handling
-TidalVolt accepts OverDrive fields including SOC, EV range, speed, motor and charging power, charge state, battery temperature, odometer, SOH, HV pack voltage, cell-voltage extrema and charging ETA. Missing fields remain unavailable; OverDrive's estimated SOH is kept distinct from OEM-reported SOH.
-
-The integration is read-only from TidalVolt's side: TidalVolt subscribes to telemetry and never publishes vehicle commands. The OverDrive control option must remain disabled.
-
-## Compatibility and licensing
-BYD Trip Stats compatibility must be confirmed on the target vehicle/head-unit firmware. Its source is licensed under BUSL-1.1; TidalVolt uses its documented MQTT data interface and does not copy or redistribute its source code.
-
-## Important
-Vehicle values are shown as unavailable until a real telemetry message is received. No sample BMS readings are presented as live.
+Open this repository in Android Studio, or run the TidalVolt Android CI workflow from the Actions tab. Successful runs upload a TidalVolt-debug-apk artifact.

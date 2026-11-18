@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_root" android:layout_width="match_parent" android:layout_height="match_parent"
+    android:orientation="vertical" android:padding="16dp" android:background="@drawable/widget_background">
+    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="TIDALVOLT • VEHICLE" android:textStyle="bold" android:textSize="11sp" android:textColor="#397D78"/>
+    <TextView android:id="@+id/widget_overview_soc" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="—" android:textSize="30sp" android:textStyle="bold" android:textColor="#26302F"/>
+    <TextView android:id="@+id/widget_overview_range" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Range unavailable" android:textSize="14sp" android:textColor="#26302F"/>
+    <TextView android:id="@+id/widget_overview_speed" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="— mph" android:textSize="14sp" android:textColor="#26302F"/>
+    <TextView android:id="@+id/widget_overview_state" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Charging status unavailable" android:textSize="12sp" android:textColor="#26302F"/>
+    <TextView android:id="@+id/widget_overview_updated" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Waiting for vehicle data" android:textSize="10sp" android:textColor="#777777"/>
+</LinearLayout>

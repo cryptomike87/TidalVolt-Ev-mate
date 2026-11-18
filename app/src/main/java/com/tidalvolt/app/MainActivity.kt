@@ -1,8 +1,8 @@
 package com.tidalvolt.app
 
 import android.os.Bundle
-import android.location.LocationManager
-import android.widget.Toast
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import java.text.SimpleDateFormat
@@ -10,21 +10,12 @@ import java.util.Date
 import java.util.Locale
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
-import android.Manifest
-import android.content.pm.PackageManager
-import androidx.core.content.ContextCompat
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.ui.viewinterop.AndroidView
-import android.webkit.WebView
-import android.webkit.WebViewClient
-import android.webkit.WebChromeClient
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -50,6 +41,10 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent { TidalVoltApp() }
+        if (android.os.Build.VERSION.SDK_INT >= 33 &&
+            checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 3001)
+        }
     }
 }
 
@@ -57,7 +52,6 @@ class MainActivity : ComponentActivity() {
 fun TidalVoltApp() {
     var dark by remember { mutableStateOf(false) }
     var tab by remember { mutableStateOf("Vehicle") }
-    var mapFullscreen by remember { mutableStateOf(false) }
     val bg = if (dark) Obsidian else Pearl
     val card = if (dark) DarkCard else PearlCard
     val fg = if (dark) Color(0xFFE7E0D4) else Ink
@@ -65,28 +59,25 @@ fun TidalVoltApp() {
 
     MaterialTheme(colorScheme = if (dark) darkColorScheme(primary = accent, background = bg, surface = card, onSurface = fg) else lightColorScheme(primary = accent, background = bg, surface = card, onSurface = fg)) {
         Scaffold(containerColor = bg, bottomBar = {
-            if (!(tab == "Map" && mapFullscreen)) NavigationBar(containerColor = card) {
-                listOf("Vehicle", "Map", "Energy", "Stats", "More").forEach { item ->
+            NavigationBar(containerColor = card) {
+                listOf("Vehicle", "Charging", "Trips", "Insights", "More").forEach { item ->
                     NavigationBarItem(selected = tab == item, onClick = { tab = item },
-                        icon = { Icon(when(item) { "Vehicle" -> Icons.Default.DirectionsCar; "Map" -> Icons.Default.Map; "Energy" -> Icons.Default.Bolt; "Stats" -> Icons.Default.QueryStats; else -> Icons.Default.Settings }, contentDescription = item) },
+                        icon = { Icon(when(item) { "Vehicle" -> Icons.Default.DirectionsCar; "Charging" -> Icons.Default.Bolt; "Trips" -> Icons.Default.Route; "Insights" -> Icons.Default.QueryStats; else -> Icons.Default.Settings }, contentDescription = item) },
                         label = { Text(item) })
                 }
             }
         }) { padding ->
-            if (tab == "Map") {
-                MapScreen(card, fg, accent, mapFullscreen, { mapFullscreen = it }, Modifier.fillMaxSize().padding(if (mapFullscreen) PaddingValues(0.dp) else padding))
-            } else {
-                Column(Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(20.dp)) {
-                    Text("TIDALVOLT", color = accent, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
-                    Spacer(Modifier.height(8.dp))
-                    Text(tab, color = fg, fontSize = 28.sp, fontWeight = FontWeight.Bold)
-                    Spacer(Modifier.height(18.dp))
-                    when(tab) {
-                        "Vehicle" -> VehicleScreen(card, fg, accent)
-                        "Energy" -> ChargeScreen(card, fg, accent)
-                        "Stats" -> StatsScreen(card, fg, accent)
-                        else -> MoreScreen(card, fg, accent, dark) { dark = it }
-                    }
+            Column(Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(20.dp)) {
+                Text("TIDALVOLT", color = accent, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
+                Spacer(Modifier.height(8.dp))
+                Text(tab, color = fg, fontSize = 28.sp, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.height(18.dp))
+                when(tab) {
+                    "Vehicle" -> VehicleScreen(card, fg, accent)
+                    "Charging" -> ChargeScreen(card, fg, accent)
+                    "Trips" -> TripsScreen(card, fg, accent)
+                    "Insights" -> StatsScreen(card, fg, accent)
+                    else -> MoreScreen(card, fg, accent, dark) { dark = it }
                 }
             }
         }
@@ -108,7 +99,7 @@ private fun VehicleScreen(card: Color, fg: Color, accent: Color) {
         Text("Live vehicle overview", color = fg.copy(alpha=.65f))
         Spacer(Modifier.height(20.dp))
         Text(telemetry?.soc?.let { "%.0f%%".format(it) } ?: "—", color = accent, fontSize = 54.sp, fontWeight = FontWeight.Bold)
-        Text(if (telemetry != null) "Battery level • Live OverDrive telemetry" else "Battery level • Waiting for live vehicle data", color = fg.copy(alpha=.65f))
+        Text(if (telemetry != null) "Battery level • Live vehicle telemetry" else "Battery level • Waiting for live vehicle data", color = fg.copy(alpha=.65f))
         Spacer(Modifier.height(12.dp))
         LinearProgressIndicator(progress = { ((telemetry?.soc ?: 0.0) / 100.0).toFloat().coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth(), color = accent)
         Spacer(Modifier.height(18.dp))
@@ -151,8 +142,7 @@ private fun VehicleScreen(card: Color, fg: Color, accent: Color) {
     Spacer(Modifier.height(14.dp))
     Panel(card) {
         Text("Vehicle connection", color = fg, fontWeight = FontWeight.SemiBold)
-        Text(if (telemetry != null) "Receiving live vehicle data from OverDrive. Confirm readings against the vehicle display during initial testing." else "Direct BYD head-unit connection is being prepared. No external receiver is required for the planned approach.", color = fg.copy(alpha=.7f))
-        Text("Connection: ${MqttTelemetryManager.status.value}", color = accent, fontSize = 12.sp)
+        Text(if (telemetry != null) "Receiving live vehicle data. Confirm readings against the vehicle display during initial testing." else "No live BYD telemetry has been received yet. Start the phone receiver in More and connect OverDrive.", color = fg.copy(alpha=.7f))
     }
 }
 
@@ -161,86 +151,7 @@ private fun Metric(label: String, value: String, fg: Color) {
     Column { Text(label, color = fg.copy(alpha=.6f), fontSize = 12.sp); Text(value, color = fg, fontWeight = FontWeight.Bold, fontSize = 17.sp) }
 }
 
-@Composable
-private fun MapScreen(card: Color, fg: Color, accent: Color, fullscreen: Boolean, onFullscreen: (Boolean)->Unit, modifier: Modifier = Modifier) {
-    var showLayers by remember { mutableStateOf(false) }
-    var showInfo by remember { mutableStateOf(false) }
-    var activeLayer by remember { mutableStateOf("Chargers") }
-    var webView by remember { mutableStateOf<WebView?>(null) }
-    val context = androidx.compose.ui.platform.LocalContext.current
-    var locationGranted by remember { mutableStateOf(ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED || ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED) }
-    fun locateUser() {
-        try {
-            val manager = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
-            val location = listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)
-                .mapNotNull { provider -> runCatching { manager.getLastKnownLocation(provider) }.getOrNull() }
-                .maxByOrNull { it.time }
-            if (location != null) {
-                webView?.evaluateJavascript("centerOn(${location.latitude},${location.longitude})", null)
-            } else {
-                Toast.makeText(context, "Current location is not available yet. Turn on device location and try again.", Toast.LENGTH_LONG).show()
-            }
-        } catch (_: SecurityException) {
-            locationGranted = false
-            Toast.makeText(context, "Please allow location access to locate your vehicle.", Toast.LENGTH_LONG).show()
-        }
-    }
-    val locationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
-        locationGranted = result[Manifest.permission.ACCESS_FINE_LOCATION] == true || result[Manifest.permission.ACCESS_COARSE_LOCATION] == true
-        if (locationGranted) locateUser()
-    }
-    Column(modifier.fillMaxSize().background(Color(0xFFE9EEE9))) {
-        if (!fullscreen) {
-            Row(Modifier.fillMaxWidth().background(card).padding(horizontal=14.dp, vertical=4.dp), horizontalArrangement=Arrangement.SpaceBetween, verticalAlignment=Alignment.CenterVertically) {
-                Column { Text("TIDALVOLT MAP", color=accent, fontSize=10.sp, fontWeight=FontWeight.Bold); Text("Nassau, The Bahamas", color=fg, fontWeight=FontWeight.Bold) }
-                IconButton(onClick={onFullscreen(true)}) { Icon(Icons.Default.Fullscreen, contentDescription="Expand map", tint=fg) }
-            }
-        }
-        Box(Modifier.weight(1f).fillMaxWidth()) {
-            AndroidView(modifier=Modifier.fillMaxSize(), factory={ context ->
-                WebView(context).apply {
-                    settings.javaScriptEnabled=true
-                    settings.domStorageEnabled=true
-                    settings.loadsImagesAutomatically=true
-                    webChromeClient=WebChromeClient()
-                    webViewClient=WebViewClient()
-                    setBackgroundColor(android.graphics.Color.rgb(232,238,232))
-                    loadDataWithBaseURL("https://unpkg.com/", tidalVoltMapPage, "text/html", "UTF-8", null)
-                    webView=this
-                }
-            }, update={ webView=it })
-            Row(Modifier.align(Alignment.TopEnd).padding(10.dp), horizontalArrangement=Arrangement.spacedBy(6.dp)) {
-                FilledTonalButton(onClick={ if (!locationGranted) locationPermission.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)) else locateUser() }, contentPadding=PaddingValues(horizontal=10.dp, vertical=8.dp)) { Icon(Icons.Default.MyLocation, contentDescription="Location"); Text("Locate") }
-                FilledTonalButton(onClick={showLayers=!showLayers}, contentPadding=PaddingValues(horizontal=12.dp, vertical=8.dp)) { Icon(Icons.Default.Layers, contentDescription=null); Spacer(Modifier.width(4.dp)); Text("Layers") }
-                FilledTonalButton(onClick={onFullscreen(!fullscreen)}, contentPadding=PaddingValues(horizontal=12.dp, vertical=8.dp)) { Icon(if(fullscreen) Icons.Default.FullscreenExit else Icons.Default.Fullscreen, contentDescription=null) }
-            }
-            if(showLayers) {
-                Card(Modifier.align(Alignment.TopEnd).padding(top=58.dp,end=10.dp).widthIn(max=210.dp), colors=CardDefaults.cardColors(containerColor=card)) {
-                    Column(Modifier.padding(10.dp), verticalArrangement=Arrangement.spacedBy(4.dp)) {
-                        listOf("Chargers","Range","Weather","Trip").forEach { layer ->
-                            TextButton(onClick={activeLayer=layer; showLayers=false; webView?.evaluateJavascript("setLayer('${layer.lowercase()}')",null); showInfo=true}, modifier=Modifier.fillMaxWidth()) {
-                                Text((if(activeLayer==layer) "✓  " else "")+layer, color=fg)
-                            }
-                        }
-                    }
-                }
-            }
-            if(showInfo) {
-                Card(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(8.dp), colors=CardDefaults.cardColors(containerColor=card.copy(alpha=.96f))) {
-                    Row(Modifier.padding(horizontal=12.dp, vertical=7.dp), verticalAlignment=Alignment.CenterVertically) {
-                        Text(when(activeLayer) {
-                            "Chargers" -> "Charging stations listed in OpenStreetMap. Verify availability before travelling."
-                            "Range" -> "Range overlay will use live TidalVolt vehicle telemetry when available."
-                            "Weather" -> "Live weather overlay is not connected yet."
-                            else -> "Trip routing and arrival charge require ABRP integration."
-                        }, color=fg.copy(alpha=.8f), fontSize=11.sp, modifier=Modifier.weight(1f))
-                        IconButton(onClick={showInfo=false}) { Icon(Icons.Default.Close, contentDescription="Close", tint=fg) }
-                    }
-                }
-            }
-        }
-    }
-}
+
 private data class ChargeRecord(
     val timestamp: Long,
     val from: Double,
@@ -252,6 +163,7 @@ private data class ChargeRecord(
 @Composable
 private fun ChargeScreen(card: Color, fg: Color, accent: Color) {
     val context = androidx.compose.ui.platform.LocalContext.current
+    val telemetry by TelemetryStore.latest
     val prefs = remember { context.getSharedPreferences("tidalvolt_charge_history", Context.MODE_PRIVATE) }
     var current by remember { mutableStateOf("") }
     var target by remember { mutableStateOf("90") }
@@ -270,10 +182,30 @@ private fun ChargeScreen(card: Color, fg: Color, accent: Color) {
             }
         }
     }
+    if (telemetry != null) {
+        Panel(card) {
+            Text("Live charging", color=fg, fontWeight=FontWeight.SemiBold, fontSize=19.sp)
+            Text(when (telemetry?.isCharging) { true -> "Vehicle is charging"; false -> "Vehicle is not charging"; null -> "Charging state unavailable" }, color=accent, fontWeight=FontWeight.SemiBold)
+            Spacer(Modifier.height(10.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement=Arrangement.SpaceBetween) {
+                Metric("Battery", telemetry?.soc?.let { "%.0f%%".format(it) } ?: "Unavailable", fg)
+                Metric("Charging power", telemetry?.chargingPowerKw?.let { "%.1f kW".format(it) } ?: "Unavailable", fg)
+            }
+            Spacer(Modifier.height(8.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement=Arrangement.SpaceBetween) {
+                Metric("Added / current range", telemetry?.rangeMiles?.let { "%.0f mi range".format(it) } ?: "Unavailable", fg)
+                Metric("Time to full", telemetry?.chargingEtaMinutes?.let { "%.0f min".format(it) } ?: "Unavailable", fg)
+            }
+            Text("Live values appear here when OverDrive is sending telemetry to your phone.", color=fg.copy(alpha=.6f), fontSize=11.sp)
+        }
+        Spacer(Modifier.height(14.dp))
+    }
     val from = current.toDoubleOrNull()?.coerceIn(0.0,100.0)
     val to = target.toDoubleOrNull()?.coerceIn(0.0,100.0)
     val tariff = rate.toDoubleOrNull()?.coerceAtLeast(0.0)
-    val gridKwh = if (from != null && to != null && to >= from) 45.1 * (to-from) / 100.0 / .95 else null
+    val batteryKwh = if (from != null && to != null && to >= from) 45.1 * (to-from) / 100.0 else null
+    val gridKwh = batteryKwh?.div(0.95)
+    val lossKwh = if (gridKwh != null && batteryKwh != null) gridKwh - batteryKwh else null
     val estimate = if (gridKwh != null && tariff != null) gridKwh * tariff else null
     Panel(card) {
         Text("Charging estimator", color = fg, fontWeight = FontWeight.SemiBold, fontSize = 19.sp)
@@ -283,8 +215,10 @@ private fun ChargeScreen(card: Color, fg: Color, accent: Color) {
         NumberField("Target battery %", target, { target=it }, fg)
         NumberField("Electricity price (BSD/kWh)", rate, { rate=it }, fg)
         Spacer(Modifier.height(14.dp))
-        if (gridKwh != null && estimate != null) {
-            Text("Estimated grid energy: %.2f kWh".format(gridKwh), color = fg)
+        if (gridKwh != null && estimate != null && batteryKwh != null && lossKwh != null) {
+            Text("Energy stored in battery: %.2f kWh".format(batteryKwh), color = fg)
+            Text("Estimated 5% charging loss: %.2f kWh".format(lossKwh), color = fg.copy(alpha=.7f), fontSize = 12.sp)
+            Text("Estimated energy from charger: %.2f kWh".format(gridKwh), color = fg, fontWeight = FontWeight.SemiBold)
             Text("Estimated cost: BSD $%.2f".format(estimate), color = accent, fontSize = 27.sp, fontWeight = FontWeight.Bold)
         } else {
             Text("Enter a valid current battery level and a target at or above it to see your estimate.", color = fg.copy(alpha=.7f))
@@ -345,13 +279,13 @@ private fun ChargeScreen(card: Color, fg: Color, accent: Color) {
         }, fg)
         val miles = distanceSinceCharge.toDoubleOrNull()?.coerceAtLeast(0.0) ?: 0.0
         val gas = petrolPrice.toDoubleOrNull()?.coerceAtLeast(0.0) ?: 0.0
-        val evCost = miles * 20.0 / 100.0 * (rate.toDoubleOrNull()?.coerceAtLeast(0.0) ?: 0.55)
+        val evCost = miles * 20.0 / 100.0 / .95 * (rate.toDoubleOrNull()?.coerceAtLeast(0.0) ?: 0.55)
         val petrolCost = miles / 15.0 * gas
         Spacer(Modifier.height(8.dp))
         Metric("Estimated EV cost", "BSD $%.2f".format(evCost), fg)
         Metric("Estimated petrol cost", "BSD $%.2f".format(petrolCost), fg)
         Text("Estimated savings: BSD $%.2f".format(petrolCost - evCost), color=accent, fontSize=24.sp, fontWeight=FontWeight.Bold)
-        Text("Estimate uses 20 kWh/100 mi, 15 MPG and your electricity and petrol prices. Mileage is currently entered manually; automatic odometer tracking is not connected.", color=fg.copy(alpha=.6f), fontSize=11.sp)
+        Text("Estimate includes the automatic 5% charging-loss allowance and uses 20 kWh/100 mi, 15 MPG and your electricity and petrol prices. Mileage is currently entered manually; automatic odometer tracking is not connected.", color=fg.copy(alpha=.6f), fontSize=11.sp)
     }
     Spacer(Modifier.height(14.dp))
     Panel(card) {
@@ -384,7 +318,7 @@ private fun SavingsScreen(card: Color, fg: Color, accent: Color) {
     var petrol by remember { mutableStateOf("6.85") }
     val distance = miles.toDoubleOrNull()?.coerceAtLeast(0.0) ?: 0.0
     val fuel = petrol.toDoubleOrNull()?.coerceAtLeast(0.0) ?: 0.0
-    val evCost = distance * 20.0 / 100.0 * .55
+    val evCost = distance * 20.0 / 100.0 / .95 * .55
     val gasCost = distance / 15.0 * fuel
     Panel(card) {
         Text("EV vs petrol savings", color = fg, fontSize = 19.sp, fontWeight = FontWeight.SemiBold)
@@ -395,7 +329,7 @@ private fun SavingsScreen(card: Color, fg: Color, accent: Color) {
         Spacer(Modifier.height(8.dp))
         Metric("Estimated petrol cost", "BSD $%.2f".format(gasCost), fg)
         Text("Estimated monthly difference: BSD $%.2f".format(max(0.0,gasCost-evCost)), color=accent, fontSize=24.sp, fontWeight=FontWeight.Bold)
-        Text("Illustrative assumptions: 20 kWh/100 mi, BSD $0.55/kWh, 15 MPG. Edit assumptions in a future settings update.", color=fg.copy(alpha=.6f), fontSize=11.sp)
+        Text("Illustrative assumptions include 5% charging loss: 20 kWh/100 mi from the battery, BSD $0.55/kWh and 15 MPG.", color=fg.copy(alpha=.6f), fontSize=11.sp)
     }
 }
 
@@ -423,12 +357,162 @@ private fun StatsScreen(card: Color, fg: Color, accent: Color) {
         Text("Tracking requirements", color=fg, fontWeight=FontWeight.SemiBold)
         Text("Work and home time need saved locations. Driving and parked time need motion recognition. Red-light time needs a stop-detection model. TidalVolt will not invent activity totals.", color=fg.copy(alpha=.7f))
     }
+    Spacer(Modifier.height(12.dp))
+    val samplePrefs = remember { context.getSharedPreferences("tidalvolt_telemetry_history", Context.MODE_PRIVATE) }
+    val samples = remember { samplePrefs.getString("samples", "").orEmpty().lines().filter { it.isNotBlank() }.takeLast(20).reversed() }
+    Panel(card) {
+        Text("Recent vehicle history", color=fg, fontSize=19.sp, fontWeight=FontWeight.SemiBold)
+        Text("Telemetry samples saved on this phone", color=fg.copy(alpha=.65f), fontSize=12.sp)
+        Spacer(Modifier.height(8.dp))
+        if (samples.isEmpty()) {
+            Text("No telemetry history yet. Once OverDrive sends data, recent readings will appear here.", color=fg.copy(alpha=.7f))
+        } else {
+            samples.forEach { line ->
+                val parts = line.split("|")
+                if (parts.size >= 7) {
+                    val stamp = parts[0].toLongOrNull() ?: 0L
+                    val date = if (stamp > 0L) SimpleDateFormat("MMM d • h:mm:ss a", Locale.getDefault()).format(Date(stamp)) else "Unknown time"
+                    val soc = parts[1].takeIf { it.isNotBlank() }?.let { "$it%" } ?: "—"
+                    val range = parts[2].takeIf { it.isNotBlank() }?.let { "$it mi" } ?: "—"
+                    val speed = parts[3].takeIf { it.isNotBlank() }?.let { "$it mph" } ?: "—"
+                    val charging = when (parts[5]) { "true" -> "Charging"; "false" -> "Not charging"; else -> "Unknown" }
+                    Column(Modifier.fillMaxWidth().padding(vertical=7.dp)) {
+                        Text(date, color=fg.copy(alpha=.6f), fontSize=11.sp)
+                        Text("Battery $soc  •  Range $range", color=fg, fontWeight=FontWeight.SemiBold)
+                        Text("$charging  •  Speed $speed", color=accent, fontSize=12.sp)
+                    }
+                    HorizontalDivider()
+                }
+            }
+        }
+    }
 }
 @Composable
 private fun MoreScreen(card: Color, fg: Color, accent: Color, dark: Boolean, setDark: (Boolean)->Unit) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val receiverStatus by TelemetryReceiverServer.status
+    val receiverEndpoint by TelemetryReceiverServer.endpoint
+    val receiverConnected by TelemetryReceiverServer.connected
+    var receiverStarted by remember { mutableStateOf(TelemetryReceiverServer.isRunning()) }
+    val telemetry by TelemetryStore.latest
+    val connectionPrefs = remember { context.getSharedPreferences("tidalvolt_receiver", Context.MODE_PRIVATE) }
+    var networkMode by remember { mutableStateOf(connectionPrefs.getString("network_mode", "auto") ?: "auto") }
+    var receiverPort by remember { mutableStateOf(connectionPrefs.getInt("receiver_port", 8765).toString()) }
+    var tailscaleIp by remember { mutableStateOf(connectionPrefs.getString("tailscale_ip", "") ?: "") }
+    var modeMenuExpanded by remember { mutableStateOf(false) }
+    var settingsMessage by remember { mutableStateOf("") }
+
     Panel(card) {
-        Text("Vehicle data connection", color = fg, fontWeight = FontWeight.SemiBold, fontSize = 19.sp)
-        Text("Direct BYD head-unit access is the current development priority. The MQTT receiver setup is temporarily hidden while we test the vehicle's built-in data services.", color = fg.copy(alpha=.7f))
+        Text("Connection Settings", color = fg, fontWeight = FontWeight.SemiBold, fontSize = 19.sp)
+        Text("Choose how OverDrive reaches this phone. Automatic prefers Tailscale and falls back to the local network.", color = fg.copy(alpha=.7f), fontSize = 12.sp)
+        Spacer(Modifier.height(10.dp))
+        Text("Network mode", color = fg.copy(alpha=.7f), fontSize = 12.sp)
+        Box {
+            OutlinedButton(onClick = { modeMenuExpanded = true }, modifier = Modifier.fillMaxWidth()) {
+                Text(when (networkMode) {
+                    "tailscale" -> "Tailscale only"
+                    "local" -> "Local network only"
+                    else -> "Automatic (Tailscale preferred)"
+                })
+            }
+            DropdownMenu(expanded = modeMenuExpanded, onDismissRequest = { modeMenuExpanded = false }) {
+                DropdownMenuItem(text = { Text("Automatic (Tailscale preferred)") }, onClick = { networkMode = "auto"; modeMenuExpanded = false })
+                DropdownMenuItem(text = { Text("Tailscale only") }, onClick = { networkMode = "tailscale"; modeMenuExpanded = false })
+                DropdownMenuItem(text = { Text("Local network only") }, onClick = { networkMode = "local"; modeMenuExpanded = false })
+            }
+        }
+        OutlinedTextField(
+            value = receiverPort,
+            onValueChange = { value -> if (value.length <= 5 && value.all { it.isDigit() }) receiverPort = value },
+            label = { Text("Local listening port") },
+            supportingText = { Text("Default 8765 • allowed range 1024–65535") },
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth()
+        )
+        OutlinedTextField(
+            value = tailscaleIp,
+            onValueChange = { tailscaleIp = it.trim() },
+            label = { Text("Tailscale IP override (optional)") },
+            placeholder = { Text("100.x.x.x") },
+            supportingText = { Text("Leave blank to detect this phone's Tailscale IP automatically.") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth()
+        )
+        Button(
+            onClick = {
+                val portValue = receiverPort.toIntOrNull()
+                val ipValue = tailscaleIp.trim()
+                val octets = ipValue.split(".").mapNotNull { it.toIntOrNull() }
+                val validIp = ipValue.isBlank() || (octets.size == 4 && octets[0] == 100 && octets[1] in 64..127 && octets.all { it in 0..255 })
+                if (portValue == null || portValue !in 1024..65535) {
+                    settingsMessage = "Enter a port between 1024 and 65535."
+                } else if (!validIp) {
+                    settingsMessage = "Enter a valid Tailscale IPv4 address in the 100.64.0.0/10 range, or leave it blank."
+                } else {
+                    val wasRunning = TelemetryReceiverServer.isRunning()
+                    connectionPrefs.edit()
+                        .putString("network_mode", networkMode)
+                        .putInt("receiver_port", portValue)
+                        .putString("tailscale_ip", ipValue)
+                        .apply()
+                    if (wasRunning) {
+                        TelemetryReceiverServer.stop()
+                        TelemetryReceiverServer.start(context)
+                        receiverStarted = true
+                        settingsMessage = "Settings saved. Receiver restarted on port $portValue."
+                    } else {
+                        settingsMessage = "Settings saved. Start the receiver to apply them."
+                    }
+                }
+            },
+            modifier = Modifier.fillMaxWidth()
+        ) { Text("Save and apply settings") }
+        if (settingsMessage.isNotBlank()) {
+            Text(settingsMessage, color = accent, fontSize = 12.sp)
+        }
+    }
+    Spacer(Modifier.height(12.dp))
+
+    Panel(card) {
+        Text("OverDrive connection", color = fg, fontWeight = FontWeight.SemiBold, fontSize = 19.sp)
+        Text("TidalVolt runs on your phone and receives vehicle telemetry from OverDrive on the BYD head unit. For remote access across different networks, connect both devices to the same Tailscale network. No MQTT broker is required.", color = fg.copy(alpha=.7f))
+        Spacer(Modifier.height(10.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Default.Circle, contentDescription = null, tint = if (receiverConnected) Color(0xFF2EAA70) else fg.copy(alpha=.35f), modifier = Modifier.size(10.dp))
+            Spacer(Modifier.width(8.dp))
+            Text(receiverStatus, color = accent, fontWeight = FontWeight.SemiBold)
+        }
+        Spacer(Modifier.height(8.dp))
+        Text("Phone receiver address", color = fg.copy(alpha=.65f), fontSize = 12.sp)
+        Text(receiverEndpoint, color = fg, fontSize = 12.sp)
+        Spacer(Modifier.height(10.dp))
+        Button(
+            onClick = {
+                if (receiverStarted) {
+                    TelemetryReceiverServer.stop()
+                    receiverStarted = false
+                } else {
+                    TelemetryReceiverServer.start(context)
+                    receiverStarted = true
+                }
+            },
+            modifier = Modifier.fillMaxWidth()
+        ) { Text(if (receiverStarted) "Stop receiver" else "Start phone receiver") }
+        OutlinedButton(
+            onClick = {
+                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                clipboard.setPrimaryClip(ClipData.newPlainText("TidalVolt receiver address", receiverEndpoint))
+            },
+            enabled = receiverStarted && receiverEndpoint.startsWith("ws://"),
+            modifier = Modifier.fillMaxWidth()
+        ) { Text("Copy connection address") }
+        Text("For remote access, make sure Tailscale is connected on both the phone and BYD head unit. When Tailscale is active on the phone, the address above uses its private 100.x IP and can be reached across different networks. Configure OverDrive to send telemetry to that exact address. The receiver uses a pairing token and accepts read-only telemetry JSON. Keep TidalVolt open during this first test; background receiver service support is not yet implemented. The exact OverDrive output format still needs to be confirmed on your head unit.", color = fg.copy(alpha=.6f), fontSize = 11.sp)
+    }
+    Spacer(Modifier.height(12.dp))
+    Panel(card) {
+        Text("Latest received data", color = fg, fontWeight = FontWeight.SemiBold)
+        Text(if (telemetry == null) "Waiting for the first OverDrive telemetry packet." else "Last packet: " + SimpleDateFormat("h:mm:ss a", Locale.getDefault()).format(Date(telemetry!!.receivedAtMillis)), color = fg.copy(alpha=.7f))
     }
     Spacer(Modifier.height(12.dp))
     Panel(card) {
@@ -441,70 +525,78 @@ private fun MoreScreen(card: Color, fg: Color, accent: Color, dark: Boolean, set
     }
     Spacer(Modifier.height(12.dp))
     Panel(card) {
-        Text("About TidalVolt", color = fg, fontWeight = FontWeight.SemiBold)
-        Text("Version 1.0.0 • Android foundation", color = fg.copy(alpha=.7f))
+        Text("About TidalVolt", color = fg, fontWeight = FontWeight.SemiBold, fontSize = 19.sp)
+        Text("Version 1.2.0 • Phone companion", color = fg.copy(alpha=.7f))
         Text("Designed for BYD vehicles first, with room to expand to other EV brands.", color = fg.copy(alpha=.7f))
+    }
+    Spacer(Modifier.height(12.dp))
+    NotificationSettingsPanel(card, fg, accent)
+}
+
+
+
+@Composable
+private fun NotificationSettingsPanel(card: Color, fg: Color, accent: Color) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val prefs = remember { context.getSharedPreferences("tidalvolt_notifications", Context.MODE_PRIVATE) }
+    var chargingStart by remember { mutableStateOf(prefs.getBoolean("charging_start", true)) }
+    var chargingComplete by remember { mutableStateOf(prefs.getBoolean("charging_complete", true)) }
+    var batteryThreshold by remember { mutableStateOf(prefs.getBoolean("battery_threshold", true)) }
+    var tripComplete by remember { mutableStateOf(prefs.getBoolean("trip_complete", true)) }
+    var dailyReport by remember { mutableStateOf(prefs.getBoolean("daily_report", true)) }
+    var threshold by remember { mutableStateOf(prefs.getString("threshold_percent", "20") ?: "20") }
+
+    fun save(key: String, value: Boolean) { prefs.edit().putBoolean(key, value).apply() }
+
+    Panel(card) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Default.NotificationsActive, contentDescription = null, tint = accent)
+            Spacer(Modifier.width(8.dp))
+            Text("Vehicle notifications", color = fg, fontWeight = FontWeight.SemiBold, fontSize = 19.sp)
+        }
+        Text("TidalVolt will alert you directly on this phone. No messaging account, phone number or external service is needed.", color = fg.copy(alpha=.7f))
+        Spacer(Modifier.height(12.dp))
+        Text("Automatic event alerts", color = fg, fontWeight = FontWeight.SemiBold)
+        NotificationToggle("Charging started", chargingStart) { chargingStart=it; save("charging_start",it) }
+        NotificationToggle("Charging completed", chargingComplete) { chargingComplete=it; save("charging_complete",it) }
+        NotificationToggle("Battery threshold", batteryThreshold) { batteryThreshold=it; save("battery_threshold",it) }
+        NotificationToggle("Trip completed", tripComplete) { tripComplete=it; save("trip_complete",it) }
+        NotificationToggle("Daily vehicle report", dailyReport) { dailyReport=it; save("daily_report",it) }
+        OutlinedTextField(
+            value=threshold,
+            onValueChange={ value -> if (value.isEmpty() || (value.toIntOrNull()?.let { it in 1..100 } == true)) { threshold=value; prefs.edit().putString("threshold_percent",value).apply() } },
+            label={ Text("Battery alert threshold (%)") },
+            keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Number),
+            singleLine=true,
+            modifier=Modifier.fillMaxWidth()
+        )
+        Spacer(Modifier.height(8.dp))
+        Text("Notifications are delivered by Android. Android notification permission must be allowed. Trip and daily-report alerts will only activate once their detection and schedule are implemented against verified vehicle data.", color=fg.copy(alpha=.65f), fontSize=11.sp)
     }
 }
 
 @Composable
-private fun MqttSettingsPanel(card: Color, fg: Color, accent: Color) {
-    val context = androidx.compose.ui.platform.LocalContext.current
-    val prefs = remember { context.getSharedPreferences("tidalvolt_mqtt", Context.MODE_PRIVATE) }
-    var host by remember { mutableStateOf(prefs.getString("host", "") ?: "") }
-    var port by remember { mutableStateOf(prefs.getString("port", "8883") ?: "8883") }
-    var topic by remember { mutableStateOf(prefs.getString("topic", "overdrive/vehicle/telemetry") ?: "overdrive/vehicle/telemetry") }
-    var username by remember { mutableStateOf(prefs.getString("username", "") ?: "") }
-    var password by remember { mutableStateOf(prefs.getString("password", "") ?: "") }
-    var showPassword by remember { mutableStateOf(false) }
-    val connectionStatus by MqttTelemetryManager.status
-
-    Panel(card) {
-        Text("Integrations", color = fg, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-        Spacer(Modifier.height(6.dp))
-        Text("OverDrive / BYD Trip Stats • MQTT telemetry", color = accent, fontWeight = FontWeight.SemiBold)
-        Text("Connect TidalVolt to OverDrive's live vehicle telemetry or BYD Trip Stats. TidalVolt only subscribes; it never sends vehicle commands.", color = fg.copy(alpha=.7f))
-        Spacer(Modifier.height(10.dp))
-        OutlinedTextField(value = host, onValueChange = { host = it }, label = { Text("MQTT broker hostname") }, placeholder = { Text("Broker hostname or Tailscale IP") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(value = port, onValueChange = { port = it.filter(Char::isDigit).take(5) }, label = { Text("Broker port") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(value = topic, onValueChange = { topic = it }, label = { Text("Telemetry topic") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(value = username, onValueChange = { username = it }, label = { Text("Broker username") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(value = password, onValueChange = { password = it }, label = { Text("Broker password") }, singleLine = true, visualTransformation = if (showPassword) androidx.compose.ui.text.input.VisualTransformation.None else PasswordVisualTransformation(), trailingIcon = { TextButton(onClick = { showPassword = !showPassword }) { Text(if (showPassword) "Hide" else "Show") } }, modifier = Modifier.fillMaxWidth())
-        Spacer(Modifier.height(8.dp))
-        Text("OVERDRIVE SETUP: Open OverDrive → MQTT → Add Connection. Use this same broker, credentials and topic: overdrive/vehicle/telemetry. Select Aggregate mode by leaving Home Assistant discovery OFF, and keep Allow vehicle control OFF. Set the publish interval to 5–10 seconds while driving and a slower heartbeat when parked. Enable OverDrive's Tailscale proxy if the broker is reachable through your tailnet. Port 8883 uses TLS; 1883 is unencrypted.", color = fg.copy(alpha=.6f), fontSize = 11.sp)
-        Spacer(Modifier.height(8.dp))
-        Button(
-            onClick = {
-                prefs.edit().putString("host", host.trim()).putString("port", port.trim()).putString("topic", topic.trim()).putString("username", username.trim()).putString("password", password).apply()
-                MqttTelemetryManager.connect(host.trim(), port.toIntOrNull() ?: 8883, topic.trim(), username.trim(), password)
-            },
-            enabled = host.isNotBlank() && topic.isNotBlank() && (port.toIntOrNull() ?: 0) in 1..65535,
-            modifier = Modifier.fillMaxWidth()
-        ) { Text("Save and connect") }
-        OutlinedButton(onClick = { MqttTelemetryManager.disconnect() }, modifier = Modifier.fillMaxWidth()) { Text("Disconnect") }
-        Text("Status: $connectionStatus", color = if (connectionStatus == "Connected") accent else fg.copy(alpha=.7f), fontWeight = FontWeight.SemiBold)
-        Text("For BYD Trip Stats, select its state topic instead (for example byd-trip-stats/yuanpro/state). Live telemetry is not shown until a valid JSON message arrives. Credentials are stored locally on this device. Keep OverDrive vehicle-control publishing disabled; TidalVolt is read-only.", color = fg.copy(alpha=.55f), fontSize = 11.sp)
+private fun NotificationToggle(label: String, checked: Boolean, onChange: (Boolean)->Unit) {
+    Row(Modifier.fillMaxWidth().padding(vertical=3.dp), horizontalArrangement=Arrangement.SpaceBetween, verticalAlignment=Alignment.CenterVertically) {
+        Text(label, fontSize=14.sp)
+        Switch(checked=checked, onCheckedChange=onChange)
     }
 }
 
-private val tidalVoltMapPage = """
-<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-<style>html,body,#map{height:100%;width:100%;margin:0;padding:0;background:#e8eee8}.leaflet-control-attribution{font-size:9px}</style></head><body><div id="map"></div>
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script><script>
-const map=L.map("map",{zoomControl:false}).setView([25.055,-77.35],12);
-L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:"© OpenStreetMap contributors"}).addTo(map);
-L.control.zoom({position:"bottomright"}).addTo(map);
-const chargerLayer=L.layerGroup().addTo(map), rangeLayer=L.layerGroup();
-function addCharger(lat,lon,name,info){L.marker([lat,lon]).addTo(chargerLayer).bindPopup("<b>"+name+"</b><br>"+info);}
-fetch("https://overpass-api.de/api/interpreter?data="+encodeURIComponent('[out:json][timeout:20];(node["amenity"="charging_station"](24.95,-77.58,25.13,-77.18);way["amenity"="charging_station"](24.95,-77.58,25.13,-77.18););out center;'))
-.then(r=>r.json()).then(d=>d.elements.forEach(e=>{let lat=e.lat||e.center?.lat,lon=e.lon||e.center?.lon;if(lat&&lon){let t=e.tags||{},s=Object.keys(t).filter(k=>k.startsWith("socket:")).map(k=>k.substring(7)+": "+t[k]).join(", ");addCharger(lat,lon,t.name||"EV charging station",s||"Connector details not listed");}})).catch(()=>{});
-window.centerOn=function(lat,lon){map.setView([lat,lon],15);L.circleMarker([lat,lon],{radius:8,color:"#ffffff",weight:3,fillColor:"#16877e",fillOpacity:1}).addTo(map).bindPopup("Your current location").openPopup();};
-window.setLayer=function(layer){
-if(layer==="chargers"){if(map.hasLayer(chargerLayer))map.removeLayer(chargerLayer);else map.addLayer(chargerLayer);}
-if(layer==="range"){if(map.hasLayer(rangeLayer))map.removeLayer(rangeLayer);else{L.circle([25.055,-77.35],{radius:12000,color:"#16877e",fillColor:"#39b9aa",fillOpacity:.12}).addTo(rangeLayer);map.addLayer(rangeLayer);}}
-if(layer==="weather")alert("Live weather overlay is not connected yet.");
-if(layer==="trip")alert("TidalVolt route planning is not connected yet.");
-};
-</script></body></html>
-"""
+@Composable
+private fun TripsScreen(card: Color, fg: Color, accent: Color) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val prefs = remember { context.getSharedPreferences("tidalvolt_trip_history", Context.MODE_PRIVATE) }
+    val savedTrips = remember { prefs.getString("history", "").orEmpty() }
+    Panel(card) {
+        Text("Trip history", color=fg, fontSize=19.sp, fontWeight=FontWeight.SemiBold)
+        Text("Completed trips will be stored on this phone when Overdrive telemetry is connected and trip detection is enabled.", color=fg.copy(alpha=.7f))
+        Spacer(Modifier.height(10.dp))
+        if (savedTrips.isBlank()) {
+            Text("No trips recorded yet.", color=fg.copy(alpha=.65f))
+        } else {
+            Text(savedTrips, color=fg)
+        }
+        Text("Trip recording is not active until verified live odometer and vehicle-state data are available.", color=fg.copy(alpha=.6f), fontSize=11.sp)
+    }
+}
