@@ -398,7 +398,7 @@ private fun MoreScreen(card: Color, fg: Color, accent: Color, dark: Boolean, set
 
     Panel(card) {
         Text("OverDrive connection", color = fg, fontWeight = FontWeight.SemiBold, fontSize = 19.sp)
-        Text("TidalVolt runs on your phone and receives vehicle telemetry from OverDrive on the BYD head unit over your local Wi-Fi or phone hotspot. No MQTT broker is required.", color = fg.copy(alpha=.7f))
+        Text("TidalVolt runs on your phone and receives vehicle telemetry from OverDrive on the BYD head unit. For remote access across different networks, connect both devices to the same Tailscale network. No MQTT broker is required.", color = fg.copy(alpha=.7f))
         Spacer(Modifier.height(10.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Default.Circle, contentDescription = null, tint = if (receiverConnected) Color(0xFF2EAA70) else fg.copy(alpha=.35f), modifier = Modifier.size(10.dp))
@@ -429,7 +429,7 @@ private fun MoreScreen(card: Color, fg: Color, accent: Color, dark: Boolean, set
             enabled = receiverStarted && receiverEndpoint.startsWith("ws://"),
             modifier = Modifier.fillMaxWidth()
         ) { Text("Copy connection address") }
-        Text("Connect the phone and BYD head unit to the same local network. Then configure OverDrive to send telemetry to the address above. The receiver uses a pairing token and accepts read-only telemetry JSON. The exact OverDrive output format still needs to be confirmed on your head unit.", color = fg.copy(alpha=.6f), fontSize = 11.sp)
+        Text("For remote access, make sure Tailscale is connected on both the phone and BYD head unit. When Tailscale is active on the phone, the address above uses its private 100.x IP and can be reached across different networks. Configure OverDrive to send telemetry to that exact address. The receiver uses a pairing token and accepts read-only telemetry JSON. Keep TidalVolt open during this first test; background receiver service support is not yet implemented. The exact OverDrive output format still needs to be confirmed on your head unit.", color = fg.copy(alpha=.6f), fontSize = 11.sp)
     }
     Spacer(Modifier.height(12.dp))
     Panel(card) {
