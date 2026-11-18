@@ -1,8 +1,7 @@
 package com.tidalvolt.app
 
 import android.os.Bundle
-import android.location.LocationManager
-import android.widget.Toast
+import android.content.Intent
 import android.content.Context
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import java.text.SimpleDateFormat
@@ -10,21 +9,12 @@ import java.util.Date
 import java.util.Locale
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
-import android.Manifest
-import android.content.pm.PackageManager
-import androidx.core.content.ContextCompat
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.ui.viewinterop.AndroidView
-import android.webkit.WebView
-import android.webkit.WebViewClient
-import android.webkit.WebChromeClient
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -57,7 +47,6 @@ class MainActivity : ComponentActivity() {
 fun TidalVoltApp() {
     var dark by remember { mutableStateOf(false) }
     var tab by remember { mutableStateOf("Vehicle") }
-    var mapFullscreen by remember { mutableStateOf(false) }
     val bg = if (dark) Obsidian else Pearl
     val card = if (dark) DarkCard else PearlCard
     val fg = if (dark) Color(0xFFE7E0D4) else Ink
@@ -65,28 +54,25 @@ fun TidalVoltApp() {
 
     MaterialTheme(colorScheme = if (dark) darkColorScheme(primary = accent, background = bg, surface = card, onSurface = fg) else lightColorScheme(primary = accent, background = bg, surface = card, onSurface = fg)) {
         Scaffold(containerColor = bg, bottomBar = {
-            if (!(tab == "Map" && mapFullscreen)) NavigationBar(containerColor = card) {
-                listOf("Vehicle", "Map", "Energy", "Stats", "More").forEach { item ->
+            NavigationBar(containerColor = card) {
+                listOf("Vehicle", "Charging", "Trips", "Insights", "More").forEach { item ->
                     NavigationBarItem(selected = tab == item, onClick = { tab = item },
-                        icon = { Icon(when(item) { "Vehicle" -> Icons.Default.DirectionsCar; "Map" -> Icons.Default.Map; "Energy" -> Icons.Default.Bolt; "Stats" -> Icons.Default.QueryStats; else -> Icons.Default.Settings }, contentDescription = item) },
+                        icon = { Icon(when(item) { "Vehicle" -> Icons.Default.DirectionsCar; "Charging" -> Icons.Default.Bolt; "Trips" -> Icons.Default.Route; "Insights" -> Icons.Default.QueryStats; else -> Icons.Default.Settings }, contentDescription = item) },
                         label = { Text(item) })
                 }
             }
         }) { padding ->
-            if (tab == "Map") {
-                MapScreen(card, fg, accent, mapFullscreen, { mapFullscreen = it }, Modifier.fillMaxSize().padding(if (mapFullscreen) PaddingValues(0.dp) else padding))
-            } else {
-                Column(Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(20.dp)) {
-                    Text("TIDALVOLT", color = accent, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
-                    Spacer(Modifier.height(8.dp))
-                    Text(tab, color = fg, fontSize = 28.sp, fontWeight = FontWeight.Bold)
-                    Spacer(Modifier.height(18.dp))
-                    when(tab) {
-                        "Vehicle" -> VehicleScreen(card, fg, accent)
-                        "Energy" -> ChargeScreen(card, fg, accent)
-                        "Stats" -> StatsScreen(card, fg, accent)
-                        else -> MoreScreen(card, fg, accent, dark) { dark = it }
-                    }
+            Column(Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(20.dp)) {
+                Text("TIDALVOLT", color = accent, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
+                Spacer(Modifier.height(8.dp))
+                Text(tab, color = fg, fontSize = 28.sp, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.height(18.dp))
+                when(tab) {
+                    "Vehicle" -> VehicleScreen(card, fg, accent)
+                    "Charging" -> ChargeScreen(card, fg, accent)
+                    "Trips" -> TripsScreen(card, fg, accent)
+                    "Insights" -> StatsScreen(card, fg, accent)
+                    else -> MoreScreen(card, fg, accent, dark) { dark = it }
                 }
             }
         }
@@ -161,86 +147,7 @@ private fun Metric(label: String, value: String, fg: Color) {
     Column { Text(label, color = fg.copy(alpha=.6f), fontSize = 12.sp); Text(value, color = fg, fontWeight = FontWeight.Bold, fontSize = 17.sp) }
 }
 
-@Composable
-private fun MapScreen(card: Color, fg: Color, accent: Color, fullscreen: Boolean, onFullscreen: (Boolean)->Unit, modifier: Modifier = Modifier) {
-    var showLayers by remember { mutableStateOf(false) }
-    var showInfo by remember { mutableStateOf(false) }
-    var activeLayer by remember { mutableStateOf("Chargers") }
-    var webView by remember { mutableStateOf<WebView?>(null) }
-    val context = androidx.compose.ui.platform.LocalContext.current
-    var locationGranted by remember { mutableStateOf(ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED || ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED) }
-    fun locateUser() {
-        try {
-            val manager = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
-            val location = listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)
-                .mapNotNull { provider -> runCatching { manager.getLastKnownLocation(provider) }.getOrNull() }
-                .maxByOrNull { it.time }
-            if (location != null) {
-                webView?.evaluateJavascript("centerOn(${location.latitude},${location.longitude})", null)
-            } else {
-                Toast.makeText(context, "Current location is not available yet. Turn on device location and try again.", Toast.LENGTH_LONG).show()
-            }
-        } catch (_: SecurityException) {
-            locationGranted = false
-            Toast.makeText(context, "Please allow location access to locate your vehicle.", Toast.LENGTH_LONG).show()
-        }
-    }
-    val locationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
-        locationGranted = result[Manifest.permission.ACCESS_FINE_LOCATION] == true || result[Manifest.permission.ACCESS_COARSE_LOCATION] == true
-        if (locationGranted) locateUser()
-    }
-    Column(modifier.fillMaxSize().background(Color(0xFFE9EEE9))) {
-        if (!fullscreen) {
-            Row(Modifier.fillMaxWidth().background(card).padding(horizontal=14.dp, vertical=4.dp), horizontalArrangement=Arrangement.SpaceBetween, verticalAlignment=Alignment.CenterVertically) {
-                Column { Text("TIDALVOLT MAP", color=accent, fontSize=10.sp, fontWeight=FontWeight.Bold); Text("Nassau, The Bahamas", color=fg, fontWeight=FontWeight.Bold) }
-                IconButton(onClick={onFullscreen(true)}) { Icon(Icons.Default.Fullscreen, contentDescription="Expand map", tint=fg) }
-            }
-        }
-        Box(Modifier.weight(1f).fillMaxWidth()) {
-            AndroidView(modifier=Modifier.fillMaxSize(), factory={ context ->
-                WebView(context).apply {
-                    settings.javaScriptEnabled=true
-                    settings.domStorageEnabled=true
-                    settings.loadsImagesAutomatically=true
-                    webChromeClient=WebChromeClient()
-                    webViewClient=WebViewClient()
-                    setBackgroundColor(android.graphics.Color.rgb(232,238,232))
-                    loadDataWithBaseURL("https://unpkg.com/", tidalVoltMapPage, "text/html", "UTF-8", null)
-                    webView=this
-                }
-            }, update={ webView=it })
-            Row(Modifier.align(Alignment.TopEnd).padding(10.dp), horizontalArrangement=Arrangement.spacedBy(6.dp)) {
-                FilledTonalButton(onClick={ if (!locationGranted) locationPermission.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)) else locateUser() }, contentPadding=PaddingValues(horizontal=10.dp, vertical=8.dp)) { Icon(Icons.Default.MyLocation, contentDescription="Location"); Text("Locate") }
-                FilledTonalButton(onClick={showLayers=!showLayers}, contentPadding=PaddingValues(horizontal=12.dp, vertical=8.dp)) { Icon(Icons.Default.Layers, contentDescription=null); Spacer(Modifier.width(4.dp)); Text("Layers") }
-                FilledTonalButton(onClick={onFullscreen(!fullscreen)}, contentPadding=PaddingValues(horizontal=12.dp, vertical=8.dp)) { Icon(if(fullscreen) Icons.Default.FullscreenExit else Icons.Default.Fullscreen, contentDescription=null) }
-            }
-            if(showLayers) {
-                Card(Modifier.align(Alignment.TopEnd).padding(top=58.dp,end=10.dp).widthIn(max=210.dp), colors=CardDefaults.cardColors(containerColor=card)) {
-                    Column(Modifier.padding(10.dp), verticalArrangement=Arrangement.spacedBy(4.dp)) {
-                        listOf("Chargers","Range","Weather","Trip").forEach { layer ->
-                            TextButton(onClick={activeLayer=layer; showLayers=false; webView?.evaluateJavascript("setLayer('${layer.lowercase()}')",null); showInfo=true}, modifier=Modifier.fillMaxWidth()) {
-                                Text((if(activeLayer==layer) "✓  " else "")+layer, color=fg)
-                            }
-                        }
-                    }
-                }
-            }
-            if(showInfo) {
-                Card(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(8.dp), colors=CardDefaults.cardColors(containerColor=card.copy(alpha=.96f))) {
-                    Row(Modifier.padding(horizontal=12.dp, vertical=7.dp), verticalAlignment=Alignment.CenterVertically) {
-                        Text(when(activeLayer) {
-                            "Chargers" -> "Charging stations listed in OpenStreetMap. Verify availability before travelling."
-                            "Range" -> "Range overlay will use live TidalVolt vehicle telemetry when available."
-                            "Weather" -> "Live weather overlay is not connected yet."
-                            else -> "Trip routing and arrival charge require ABRP integration."
-                        }, color=fg.copy(alpha=.8f), fontSize=11.sp, modifier=Modifier.weight(1f))
-                        IconButton(onClick={showInfo=false}) { Icon(Icons.Default.Close, contentDescription="Close", tint=fg) }
-                    }
-                }
-            }
-        }
-    }
-}
+
 private data class ChargeRecord(
     val timestamp: Long,
     val from: Double,
@@ -459,29 +366,105 @@ private fun MoreScreen(card: Color, fg: Color, accent: Color, dark: Boolean, set
     Spacer(Modifier.height(12.dp))
     Panel(card) {
         Text("About TidalVolt", color = fg, fontWeight = FontWeight.SemiBold, fontSize = 19.sp)
-        Text("Version 1.1.0 • Direct BYD connector development", color = fg.copy(alpha=.7f))
+        Text("Version 1.2.0 • Phone companion", color = fg.copy(alpha=.7f))
         Text("Designed for BYD vehicles first, with room to expand to other EV brands.", color = fg.copy(alpha=.7f))
+    }
+    Spacer(Modifier.height(12.dp))
+    WhatsAppPanel(card, fg, accent)
+}
+
+
+
+@Composable
+private fun WhatsAppPanel(card: Color, fg: Color, accent: Color) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val prefs = remember { context.getSharedPreferences("tidalvolt_whatsapp", Context.MODE_PRIVATE) }
+    val telemetry by TelemetryStore.latest
+    var chargingStart by remember { mutableStateOf(prefs.getBoolean("charging_start", true)) }
+    var chargingComplete by remember { mutableStateOf(prefs.getBoolean("charging_complete", true)) }
+    var batteryThreshold by remember { mutableStateOf(prefs.getBoolean("battery_threshold", true)) }
+    var tripComplete by remember { mutableStateOf(prefs.getBoolean("trip_complete", true)) }
+    var dailyReport by remember { mutableStateOf(prefs.getBoolean("daily_report", true)) }
+    var threshold by remember { mutableStateOf(prefs.getString("threshold_percent", "20") ?: "20") }
+
+    fun save(key: String, value: Boolean) { prefs.edit().putBoolean(key, value).apply() }
+    fun share(text: String) {
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_TEXT, text)
+        }
+        context.startActivity(Intent.createChooser(intent, "Share with WhatsApp"))
+    }
+    fun statusText(): String = buildString {
+        appendLine("⚡ TidalVolt vehicle update")
+        appendLine("BYD Yuan Pro")
+        appendLine("Battery: " + (telemetry?.soc?.let { "%.0f%%".format(it) } ?: "Not available"))
+        appendLine("Estimated range: " + (telemetry?.rangeMiles?.let { "%.0f mi".format(it) } ?: "Not available"))
+        appendLine("Charging: " + when (telemetry?.isCharging) { true -> "Active"; false -> "Inactive"; null -> "Unknown" })
+        appendLine("Charging power: " + (telemetry?.chargingPowerKw?.let { "%.1f kW".format(it) } ?: "Not available"))
+        appendLine("Updated: " + SimpleDateFormat("MMM d, yyyy • h:mm a", Locale.getDefault()).format(Date()))
+        append("Shared from TidalVolt")
+    }
+
+    Panel(card) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Default.Share, contentDescription = null, tint = accent)
+            Spacer(Modifier.width(8.dp))
+            Text("WhatsApp sharing", color = fg, fontWeight = FontWeight.SemiBold, fontSize = 19.sp)
+        }
+        Text("Send a clean vehicle status update or daily summary through WhatsApp's Android share sheet.", color = fg.copy(alpha=.7f))
+        Spacer(Modifier.height(10.dp))
+        Button(onClick = { share(statusText()) }, modifier = Modifier.fillMaxWidth()) {
+            Icon(Icons.Default.Chat, contentDescription = null)
+            Spacer(Modifier.width(8.dp))
+            Text("Share vehicle status")
+        }
+        OutlinedButton(onClick = { share("📊 TidalVolt daily vehicle report\\n\\n" + statusText()) }, modifier = Modifier.fillMaxWidth()) {
+            Text("Share daily report")
+        }
+        Spacer(Modifier.height(12.dp))
+        Text("Automatic event preferences", color = fg, fontWeight = FontWeight.SemiBold)
+        Text("Choose which events you want TidalVolt to prepare for automatic delivery.", color = fg.copy(alpha=.65f), fontSize = 12.sp)
+        WhatsAppToggle("Charging started", chargingStart) { chargingStart=it; save("charging_start",it) }
+        WhatsAppToggle("Charging completed", chargingComplete) { chargingComplete=it; save("charging_complete",it) }
+        WhatsAppToggle("Battery threshold reached", batteryThreshold) { batteryThreshold=it; save("battery_threshold",it) }
+        WhatsAppToggle("Trip completed", tripComplete) { tripComplete=it; save("trip_complete",it) }
+        WhatsAppToggle("Daily report", dailyReport) { dailyReport=it; save("daily_report",it) }
+        OutlinedTextField(
+            value=threshold,
+            onValueChange={ value -> if (value.isEmpty() || value.toIntOrNull() in 1..100) { threshold=value; prefs.edit().putString("threshold_percent",value).apply() } },
+            label={ Text("Battery alert threshold (%)") },
+            keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Number),
+            singleLine=true,
+            modifier=Modifier.fillMaxWidth()
+        )
+        Spacer(Modifier.height(8.dp))
+        Text("Manual sharing works with the regular WhatsApp app. Automatic WhatsApp delivery requires a WhatsApp Business Platform account, an approved message template and secure API configuration. These preferences are saved on this phone; automatic delivery is not active until that service is connected.", color=fg.copy(alpha=.65f), fontSize=11.sp)
     }
 }
 
-private val tidalVoltMapPage = """
-<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-<style>html,body,#map{height:100%;width:100%;margin:0;padding:0;background:#e8eee8}.leaflet-control-attribution{font-size:9px}</style></head><body><div id="map"></div>
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script><script>
-const map=L.map("map",{zoomControl:false}).setView([25.055,-77.35],12);
-L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:"© OpenStreetMap contributors"}).addTo(map);
-L.control.zoom({position:"bottomright"}).addTo(map);
-const chargerLayer=L.layerGroup().addTo(map), rangeLayer=L.layerGroup();
-function addCharger(lat,lon,name,info){L.marker([lat,lon]).addTo(chargerLayer).bindPopup("<b>"+name+"</b><br>"+info);}
-fetch("https://overpass-api.de/api/interpreter?data="+encodeURIComponent('[out:json][timeout:20];(node["amenity"="charging_station"](24.95,-77.58,25.13,-77.18);way["amenity"="charging_station"](24.95,-77.58,25.13,-77.18););out center;'))
-.then(r=>r.json()).then(d=>d.elements.forEach(e=>{let lat=e.lat||e.center?.lat,lon=e.lon||e.center?.lon;if(lat&&lon){let t=e.tags||{},s=Object.keys(t).filter(k=>k.startsWith("socket:")).map(k=>k.substring(7)+": "+t[k]).join(", ");addCharger(lat,lon,t.name||"EV charging station",s||"Connector details not listed");}})).catch(()=>{});
-window.centerOn=function(lat,lon){map.setView([lat,lon],15);L.circleMarker([lat,lon],{radius:8,color:"#ffffff",weight:3,fillColor:"#16877e",fillOpacity:1}).addTo(map).bindPopup("Your current location").openPopup();};
-window.setLayer=function(layer){
-if(layer==="chargers"){if(map.hasLayer(chargerLayer))map.removeLayer(chargerLayer);else map.addLayer(chargerLayer);}
-if(layer==="range"){if(map.hasLayer(rangeLayer))map.removeLayer(rangeLayer);else{L.circle([25.055,-77.35],{radius:12000,color:"#16877e",fillColor:"#39b9aa",fillOpacity:.12}).addTo(rangeLayer);map.addLayer(rangeLayer);}}
-if(layer==="weather")alert("Live weather overlay is not connected yet.");
-if(layer==="trip")alert("TidalVolt route planning is not connected yet.");
-};
-</script></body></html>
-"""
+@Composable
+private fun WhatsAppToggle(label: String, checked: Boolean, onChange: (Boolean)->Unit) {
+    Row(Modifier.fillMaxWidth().padding(vertical=3.dp), horizontalArrangement=Arrangement.SpaceBetween, verticalAlignment=Alignment.CenterVertically) {
+        Text(label, fontSize=14.sp)
+        Switch(checked=checked, onCheckedChange=onChange)
+    }
+}
+
+@Composable
+private fun TripsScreen(card: Color, fg: Color, accent: Color) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val prefs = remember { context.getSharedPreferences("tidalvolt_trip_history", Context.MODE_PRIVATE) }
+    val savedTrips = remember { prefs.getString("history", "").orEmpty() }
+    Panel(card) {
+        Text("Trip history", color=fg, fontSize=19.sp, fontWeight=FontWeight.SemiBold)
+        Text("Completed trips will be stored on this phone when Overdrive telemetry is connected and trip detection is enabled.", color=fg.copy(alpha=.7f))
+        Spacer(Modifier.height(10.dp))
+        if (savedTrips.isBlank()) {
+            Text("No trips recorded yet.", color=fg.copy(alpha=.65f))
+        } else {
+            Text(savedTrips, color=fg)
+        }
+        Text("Trip recording is not active until verified live odometer and vehicle-state data are available.", color=fg.copy(alpha=.6f), fontSize=11.sp)
+    }
+}
