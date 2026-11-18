@@ -88,6 +88,9 @@ fun TidalVoltApp() {
         }
     }
 
+    }
+}
+
 @Composable
 private fun Panel(card: Color, content: @Composable ColumnScope.() -> Unit) {
     Card(colors = CardDefaults.cardColors(containerColor = card), shape = RoundedCornerShape(22.dp), modifier = Modifier.fillMaxWidth()) {
