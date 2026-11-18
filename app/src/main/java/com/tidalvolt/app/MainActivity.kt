@@ -57,7 +57,6 @@ class MainActivity : ComponentActivity() {
 fun TidalVoltApp() {
     var dark by remember { mutableStateOf(false) }
     var tab by remember { mutableStateOf("Vehicle") }
-    var mapFullscreen by remember { mutableStateOf(false) }
     val bg = if (dark) Obsidian else Pearl
     val card = if (dark) DarkCard else PearlCard
     val fg = if (dark) Color(0xFFE7E0D4) else Ink
@@ -65,34 +64,29 @@ fun TidalVoltApp() {
 
     MaterialTheme(colorScheme = if (dark) darkColorScheme(primary = accent, background = bg, surface = card, onSurface = fg) else lightColorScheme(primary = accent, background = bg, surface = card, onSurface = fg)) {
         Scaffold(containerColor = bg, bottomBar = {
-            if (!(tab == "Map" && mapFullscreen)) NavigationBar(containerColor = card) {
-                listOf("Vehicle", "Map", "Energy", "Stats", "Tools", "More").forEach { item ->
+            NavigationBar(containerColor = card) {
+                listOf("Vehicle", "Energy", "Stats", "Tools", "More").forEach { item ->
                     NavigationBarItem(selected = tab == item, onClick = { tab = item },
-                        icon = { Icon(when(item) { "Vehicle" -> Icons.Default.DirectionsCar; "Map" -> Icons.Default.Map; "Energy" -> Icons.Default.Bolt; "Stats" -> Icons.Default.QueryStats; "Tools" -> Icons.Default.Build; else -> Icons.Default.Settings }, contentDescription = item) },
+                        icon = { Icon(when(item) { "Vehicle" -> Icons.Default.DirectionsCar; "Energy" -> Icons.Default.Bolt; "Stats" -> Icons.Default.QueryStats; "Tools" -> Icons.Default.Build; else -> Icons.Default.Settings }, contentDescription = item) },
                         label = { Text(item) })
                 }
             }
         }) { padding ->
-            if (tab == "Map") {
-                MapScreen(card, fg, accent, mapFullscreen, { mapFullscreen = it }, Modifier.fillMaxSize().padding(if (mapFullscreen) PaddingValues(0.dp) else padding))
-            } else {
-                Column(Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(20.dp)) {
-                    Text("TIDALVOLT", color = accent, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
-                    Spacer(Modifier.height(8.dp))
-                    Text(tab, color = fg, fontSize = 28.sp, fontWeight = FontWeight.Bold)
-                    Spacer(Modifier.height(18.dp))
-                    when(tab) {
-                        "Vehicle" -> VehicleScreen(card, fg, accent)
-                        "Energy" -> ChargeScreen(card, fg, accent)
-                        "Stats" -> StatsScreen(card, fg, accent)
-                        "Tools" -> FeatureHubScreen(card, fg, accent)
-                        else -> MoreScreen(card, fg, accent, dark) { dark = it }
-                    }
+            Column(Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(20.dp)) {
+                Text("TIDALVOLT", color = accent, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
+                Spacer(Modifier.height(8.dp))
+                Text(tab, color = fg, fontSize = 28.sp, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.height(18.dp))
+                when(tab) {
+                    "Vehicle" -> VehicleScreen(card, fg, accent)
+                    "Energy" -> ChargeScreen(card, fg, accent)
+                    "Stats" -> StatsScreen(card, fg, accent)
+                    "Tools" -> FeatureHubScreen(card, fg, accent)
+                    else -> MoreScreen(card, fg, accent, dark) { dark = it }
                 }
             }
         }
     }
-}
 
 @Composable
 private fun Panel(card: Color, content: @Composable ColumnScope.() -> Unit) {
