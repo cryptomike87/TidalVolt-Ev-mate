@@ -134,5 +134,16 @@ object TelemetryHistory {
         val history = prefs.getString("samples", "").orEmpty().lines().filter { it.isNotBlank() }.toMutableList()
         history.add(line)
         prefs.edit().putString("samples", history.takeLast(5000).joinToString("\n")).apply()
+        val widgetPrefs = context.getSharedPreferences("tidalvolt_widget_data", Context.MODE_PRIVATE)
+        widgetPrefs.edit()
+            .putString("soc", data.soc?.let { "%.0f".format(it) })
+            .putString("range", data.rangeMiles?.let { "%.0f".format(it) })
+            .putString("speed", data.speedMph?.let { "%.0f".format(it) })
+            .putString("charging", data.isCharging?.toString())
+            .putString("power", data.chargingPowerKw?.let { "%.1f".format(it) })
+            .putString("eta", data.chargingEtaMinutes?.let { "%.0f".format(it) })
+            .putString("updated", java.text.SimpleDateFormat("h:mm a", java.util.Locale.getDefault()).format(java.util.Date(data.receivedAtMillis)))
+            .apply()
+        TidalVoltWidgetUpdater.update(context)
     }
 }
