@@ -129,7 +129,7 @@ private fun featurePrefs(c:Context)=c.getSharedPreferences("tidalvolt_feature_hu
         ToolField("Parking location label",place){place=it}
         if(start==0L){
             ToolField("Battery at parking (%)",before){before=it}
-            Button(onClick={start=System.currentTimeMillis();p.edit().putLong("parking_start",start).putString("parking_soc",before).putString("parking_place",place).apply()},enabled=before.toDoubleOrNull() in 0.0..100.0,modifier=Modifier.fillMaxWidth()){Text("Start parking timer")}
+            Button(onClick={start=System.currentTimeMillis();p.edit().putLong("parking_start",start).putString("parking_soc",before).putString("parking_place",place).apply()},enabled=(before.toDoubleOrNull()?.let { it in 0.0..100.0 } == true),modifier=Modifier.fillMaxWidth()){Text("Start parking timer")}
         }else{
             ToolMetric("Session elapsed","%d minutes".format((System.currentTimeMillis()-start)/60000),fg,accent)
             ToolField("Battery now (%)",after){after=it}
@@ -159,7 +159,7 @@ private fun featurePrefs(c:Context)=c.getSharedPreferences("tidalvolt_feature_hu
     val c=consumption.toDoubleOrNull();val score=if(c!=null&&c>0)(100-(c-14)*3).toInt().coerceIn(0,100) else null
     ToolPanel(card) {
         ToolField("Average consumption (kWh/100 mi)",consumption){consumption=it}
-        if(score!=null){ToolMetric("Indicative efficiency score","$score / 100",fg,accent);ToolMetric("Consumption rating",when{c!!<=16->"Excellent";c<=20->"Good";c<=24->"Moderate";else->"High"},fg,accent)}
+        if(score!=null){ToolMetric("Indicative efficiency score","$score / 100",fg,accent);ToolMetric("Consumption rating",when{c!!<=16->"Excellent";c<=20.0->"Good";c<=24.0->"Moderate";else->"High"},fg,accent)}
         Text("Indicative comparison score, not a measured driver grade. Live trip and regenerative-braking data depend on telemetry support.",color=fg.copy(alpha=.6f),fontSize=11.sp)
     }
 }
