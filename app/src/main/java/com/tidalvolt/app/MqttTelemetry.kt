@@ -113,6 +113,7 @@ object TelemetryStore {
     private const val PREFS = "tidalvolt_vehicle_archive"
     private const val LATEST_KEY = "latest_snapshot"
     private const val HISTORY_KEY = "snapshot_history"
+    private const val LATEST_TIME_KEY = "latest_saved_at"
     private const val MAX_SNAPSHOTS = 2000
     @Volatile private var appContext: android.content.Context? = null
 
@@ -121,10 +122,13 @@ object TelemetryStore {
         appContext = app
         val prefs = app.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE)
         runCatching {
-            prefs.getString(LATEST_KEY, null)?.let { raw -> latest.value = EvTelemetry.fromJson(raw) }
+            prefs.getString(LATEST_KEY, null)?.let { raw ->
+                val savedTime = prefs.getLong(LATEST_TIME_KEY, 0L)
+                latest.value = EvTelemetry.fromJson(raw).copy(receivedAtMillis = savedTime)
+            }
             val history = org.json.JSONArray(prefs.getString(HISTORY_KEY, "[]"))
             historyCount.value = history.length()
-            lastSavedAt.value = latest.value?.receivedAtMillis ?: 0L
+            lastSavedAt.value = prefs.getLong(LATEST_TIME_KEY, 0L)
         }
     }
 
@@ -137,7 +141,7 @@ object TelemetryStore {
             val trimmed = org.json.JSONArray()
             val start = (history.length() - MAX_SNAPSHOTS).coerceAtLeast(0)
             for (i in start until history.length()) trimmed.put(history.getJSONObject(i))
-            prefs.edit().putString(LATEST_KEY, payload).putString(HISTORY_KEY, trimmed.toString()).commit()
+            prefs.edit().putString(LATEST_KEY, payload).putLong(LATEST_TIME_KEY, telemetry.receivedAtMillis).putString(HISTORY_KEY, trimmed.toString()).commit()
             latest.value = telemetry
             historyCount.value = trimmed.length()
             lastSavedAt.value = telemetry.receivedAtMillis
@@ -150,7 +154,8 @@ object TelemetryStore {
             val history = org.json.JSONArray(context.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE).getString(HISTORY_KEY, "[]"))
             val result = mutableListOf<EvTelemetry>()
             for (i in (history.length() - limit).coerceAtLeast(0) until history.length()) {
-                result.add(EvTelemetry.fromJson(history.getJSONObject(i).getString("payload")))
+                val entry = history.getJSONObject(i)
+                result.add(EvTelemetry.fromJson(entry.getString("payload")).copy(receivedAtMillis = entry.optLong("receivedAt", 0L)))
             }
             result.reversed()
         }.getOrDefault(emptyList())
